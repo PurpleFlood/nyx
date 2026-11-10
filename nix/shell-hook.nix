@@ -2,7 +2,7 @@
 # (PS1, aliases, fonctions) et shellHook (bannière, variables, workspaces).
 # Le fichier rc est aussi utilisé par `ctf-vpn shell` pour réinjecter l'environnement
 # dans le namespace réseau.
-{ pkgs, toolCount }:
+{ pkgs, toolCount, profile ? "light" }:
 let
   ctfVpn = import ./netns.nix { inherit pkgs; };
 
@@ -36,12 +36,14 @@ let
     '';
   };
 
+  profileTag = if profile == "full" then "FULL" else "LIGHT";
+
   rcFile = pkgs.writeText "pentest-rc" ''
     # Environnement pentest : prompt, aliases et fonctions (sourcé par le devShell et par ctf-vpn shell).
     if [[ "''${CTF_VPN:-0}" == 1 ]]; then
-      ctf_tag='[CTF:VPN]'
+      ctf_tag='[CTF:VPN:${profileTag}]'
     else
-      ctf_tag='[CTF]'
+      ctf_tag='[CTF:${profileTag}]'
     fi
     PS1="\[\e[1;31m\]$ctf_tag\[\e[0m\] \[\e[1;33m\]\u@\h\[\e[0m\]:\w\$ "
 
@@ -73,6 +75,7 @@ let
   banner = ''
     +--------------------------------------------------+
     |   PENTEST / CTF  -  environnement isole (Nix)    |
+    |   Profil : ${if profile == "full" then "FULL (arsenal complet)              " else "LIGHT (essentiel)                  "}|
     +--------------------------------------------------+
   '';
 
@@ -81,15 +84,17 @@ let
     export PENTEST_WORDLISTS="$PENTEST_ROOT/wordlists"
     export PENTEST_WORKSPACE="$HOME/ctf-workspaces"
     export PENTEST_RC="${rcFile}"
+    export PENTEST_PROFILE="${profile}"
     mkdir -p "$PENTEST_WORKSPACE" "$PENTEST_WORDLISTS"
 
     source "$PENTEST_RC"
 
     cat <<'BANNER'
     ${banner}
-    Paquets chargés : ${toString toolCount} (+ scripts du projet)
-    Démarrage rapide : ctf-new <nom> | ctf-htb <fichier.ovpn> | fetch-wordlists minimal
-    Aide complète    : voir README.md
+    Profil         : ${profile} | Paquets chargés : ${toString toolCount} (+ scripts du projet)
+    Démarrage      : ctf-new <nom> | ctf-htb <fichier.ovpn> | fetch-wordlists minimal
+    Changer profil : nix develop .#full  ou  nix develop (light)
+    Aide complète  : voir README.md
     BANNER
   '';
 in

@@ -1,5 +1,8 @@
 {
   # Environnement pentest/CTF isolé : `nix develop` dans ce dépôt, rien n'est exposé hors du devShell.
+  # Deux profils disponibles :
+  #   nix develop        → profil light (~7 Go)
+  #   nix develop .#full → profil full  (~20-30 Go)
   description = "Environnement pentest/CTF isolé";
 
   inputs = {
@@ -24,17 +27,23 @@
             inherit system;
             config.allowUnfree = true;
           };
-          tools = import ./nix/tools.nix { inherit pkgs pwndbg; };
-          hook = import ./nix/shell-hook.nix {
-            inherit pkgs;
-            toolCount = builtins.length tools.packages;
-          };
+
+          mkPentestShell = profile:
+            let
+              tools = import ./nix/tools.nix { inherit pkgs pwndbg profile; };
+              hook = import ./nix/shell-hook.nix {
+                inherit pkgs profile;
+                toolCount = builtins.length tools.packages;
+              };
+            in
+            pkgs.mkShell {
+              packages = tools.packages ++ hook.packages;
+              shellHook = hook.shellHook;
+            };
         in
         {
-          default = pkgs.mkShell {
-            packages = tools.packages ++ hook.packages;
-            shellHook = hook.shellHook;
-          };
+          default = mkPentestShell "light";
+          full = mkPentestShell "full";
         });
     };
 }
