@@ -35,7 +35,8 @@ EOF
 
 # Relance le script en root (opérations réseau) en conservant l'environnement
 # pour que le shell du namespace hérite de DISPLAY, PATH, PENTEST_RC, etc.
-readonly PATH_FILE="/tmp/ctf-vpn-caller-path.$(id -u)"
+PATH_FILE="/tmp/ctf-vpn-caller-path.$(id -u)"
+readonly PATH_FILE
 if [[ $EUID -ne 0 ]]; then
   case "${1:-}" in
     -h|--help|help|"") usage; exit 0 ;;

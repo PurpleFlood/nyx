@@ -3,6 +3,12 @@
   # Deux profils disponibles :
   #   nix develop        → profil light (~7 Go)
   #   nix develop .#full → profil full  (~20-30 Go)
+  #
+  # Conteneurisation Docker (branche nix-container) :
+  #   nix build .#docker-light  → image Docker "nyx:light"
+  #   nix build .#docker-full   → image Docker "nyx:full"
+  #   docker load < result      → charge l'image dans Docker
+  #   nyx start <nom>           → lance un workspace conteneurisé
   description = "Environnement pentest/CTF isolé";
 
   inputs = {
@@ -18,15 +24,16 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
+      pkgsFor = system: import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
     in
     {
+      # ── DevShells (approche classique sans conteneur) ───────────────
       devShells = forAllSystems (system:
         let
-          # allowUnfree : nécessaire pour burpsuite.
-          pkgs = import nixpkgs {
-            inherit system;
-            config.allowUnfree = true;
-          };
+          pkgs = pkgsFor system;
 
           mkPentestShell = profile:
             let
@@ -35,15 +42,37 @@
                 inherit pkgs profile;
                 toolCount = builtins.length tools.packages;
               };
+              nyx = import ./nix/nyx.nix { inherit pkgs; };
             in
             pkgs.mkShell {
-              packages = tools.packages ++ hook.packages;
+              packages = tools.packages ++ hook.packages ++ [ nyx ];
               shellHook = hook.shellHook;
             };
         in
         {
           default = mkPentestShell "light";
           full = mkPentestShell "full";
+        });
+
+      # ── Packages ────────────────────────────────────────────────────
+      packages = forAllSystems (system:
+        let
+          pkgs = pkgsFor system;
+        in
+        {
+          # CLI nyx : gestionnaire de workspaces conteneurisés
+          nyx = import ./nix/nyx.nix { inherit pkgs; };
+
+          # Images Docker construites avec Nix (déterministes)
+          # Usage : nix build .#docker-light && docker load < result
+          docker-light = import ./nix/docker.nix {
+            inherit pkgs pwndbg;
+            profile = "light";
+          };
+          docker-full = import ./nix/docker.nix {
+            inherit pkgs pwndbg;
+            profile = "full";
+          };
         });
     };
 }
