@@ -35,11 +35,12 @@ EOF
 
 # Relance le script en root (opérations réseau) en conservant l'environnement
 # pour que le shell du namespace hérite de DISPLAY, PATH, PENTEST_RC, etc.
+readonly PATH_FILE="/tmp/ctf-vpn-caller-path.$(id -u)"
 if [[ $EUID -ne 0 ]]; then
   case "${1:-}" in
     -h|--help|help|"") usage; exit 0 ;;
   esac
-  export CTF_CALLER_PATH="$PATH"
+  printf '%s' "$PATH" > "$PATH_FILE"
   exec sudo -E -- "$0" "$@"
 fi
 
@@ -47,7 +48,12 @@ REAL_USER="${SUDO_USER:-root}"
 REAL_UID="${SUDO_UID:-0}"
 REAL_GID="${SUDO_GID:-0}"
 REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
-CALLER_PATH="${CTF_CALLER_PATH:-$PATH}"
+
+if [[ -r "/tmp/ctf-vpn-caller-path.${SUDO_UID:-0}" ]]; then
+  CALLER_PATH="$(cat "/tmp/ctf-vpn-caller-path.${SUDO_UID:-0}")"
+else
+  CALLER_PATH="${CTF_CALLER_PATH:-$PATH}"
+fi
 
 namespace_exists() {
   ip netns list | awk '{print $1}' | grep -qx "$NS"
