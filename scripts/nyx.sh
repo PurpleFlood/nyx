@@ -1,13 +1,37 @@
 #!/usr/bin/env bash
 # nyx - gestionnaire d'environnements pentest conteneurisés.
-# Chaque workspace est un conteneur Docker isolé avec tous les outils de pentest,
-# construit de façon déterministe avec Nix (dockerTools.buildLayeredImage).
+# Chaque workspace est un conteneur isolé (Docker ou Podman) avec tous les outils
+# de pentest, construit de façon déterministe avec Nix (dockerTools.buildLayeredImage).
 # Usage : nyx <start|stop|list|rm> [arguments]
 set -euo pipefail
 
 readonly NYX_WORKSPACE="${NYX_WORKSPACE:-$HOME/nyx-workspace}"
 readonly NYX_IMAGE_PREFIX="nyx"
 readonly NYX_DEFAULT_PROFILE="light"
+
+# Auto-détection du runtime conteneur : podman prioritaire, sinon docker.
+# Peut être forcé via NYX_RUNTIME=docker ou NYX_RUNTIME=podman.
+detect_runtime() {
+  if [[ -n "${NYX_RUNTIME:-}" ]]; then
+    if command -v "$NYX_RUNTIME" &>/dev/null; then
+      printf '%s' "$NYX_RUNTIME"
+      return
+    fi
+    err "runtime '$NYX_RUNTIME' introuvable"
+    exit 1
+  fi
+  if command -v podman &>/dev/null; then
+    printf 'podman'
+  elif command -v docker &>/dev/null; then
+    printf 'docker'
+  else
+    err "ni podman ni docker n'est installé"
+    exit 1
+  fi
+}
+
+CTR=$(detect_runtime)
+readonly CTR
 
 info() { printf '[nyx] %s\n' "$*"; }
 warn() { printf '[nyx] avertissement : %s\n' "$*" >&2; }
@@ -36,13 +60,9 @@ EOF
 
 # ── Vérifications ────────────────────────────────────────────────────────
 
-check_docker() {
-  if ! command -v docker &>/dev/null; then
-    err "docker n'est pas installé ou pas dans le PATH"
-    exit 1
-  fi
-  if ! docker info &>/dev/null 2>&1; then
-    err "le daemon docker n'est pas accessible (permissions ? démarré ?)"
+check_runtime() {
+  if ! "$CTR" info &>/dev/null 2>&1; then
+    err "$CTR n'est pas accessible (permissions ? démarré ?)"
     exit 1
   fi
 }
@@ -58,15 +78,15 @@ validate_name() {
 # ── Helpers Docker ───────────────────────────────────────────────────────
 
 image_exists() {
-  docker image inspect "$1" &>/dev/null 2>&1
+  "$CTR" image inspect "$1" &>/dev/null 2>&1
 }
 
 container_running() {
-  docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
+  "$CTR" ps --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
 }
 
 container_exists() {
-  docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
+  "$CTR" ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
 }
 
 # ── Commandes ────────────────────────────────────────────────────────────
@@ -116,29 +136,29 @@ cmd_start() {
   # Conteneur déjà actif → entrer dedans
   if container_running "$container"; then
     info "connexion au workspace '$name'..."
-    exec docker exec -it "$container" bash --rcfile /etc/nyx-rc -i
+    exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
   fi
 
   # Conteneur existant mais arrêté → redémarrer et entrer
   if container_exists "$container"; then
     info "redémarrage du workspace '$name'..."
-    docker start "$container" >/dev/null
+    "$CTR" start "$container" >/dev/null
     sleep 2
-    exec docker exec -it "$container" bash --rcfile /etc/nyx-rc -i
+    exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
   fi
 
-  # Vérifier que l'image Docker existe
+  # Vérifier que l'image existe
   if ! image_exists "$image"; then
-    err "image '$image' introuvable dans Docker"
+    err "image '$image' introuvable"
     info "construisez-la avec :"
-    info "  nix build .#docker-$profile && docker load < result"
+    info "  nix build .#docker-$profile && $CTR load < result"
     exit 1
   fi
 
   # Créer le répertoire workspace sur l'hôte
   mkdir -p "$workspace"
 
-  # Assembler les arguments docker run
+  # Assembler les arguments "$CTR" run
   local -a run_args=(
     --name "$container"
     --hostname "$name"
@@ -177,13 +197,13 @@ cmd_start() {
   fi
 
   info "lancement du workspace '$name' (profil: $profile)..."
-  docker run "${run_args[@]}" "$image" >/dev/null
+  "$CTR" run "${run_args[@]}" "$image" >/dev/null
 
   # Attendre que l'entrypoint démarre
   sleep 2
 
   # Entrer dans le conteneur
-  exec docker exec -it "$container" bash --rcfile /etc/nyx-rc -i
+  exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
 }
 
 cmd_stop() {
@@ -195,7 +215,7 @@ cmd_stop() {
   local container="nyx-$name"
 
   if container_running "$container"; then
-    docker stop "$container" >/dev/null
+    "$CTR" stop "$container" >/dev/null
     info "workspace '$name' arrêté"
   elif container_exists "$container"; then
     info "workspace '$name' déjà arrêté"
@@ -232,7 +252,7 @@ cmd_list() {
 
     if container_exists "$container"; then
       local env_dump
-      env_dump=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container" 2>/dev/null) || true
+      env_dump=$("$CTR" inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container" 2>/dev/null) || true
       prof=$(echo "$env_dump" | grep '^NYX_PROFILE=' | cut -d= -f2) || true
       if echo "$env_dump" | grep -q '^NYX_VPN=1' 2>/dev/null; then
         vpn_flag="oui"
@@ -258,10 +278,10 @@ cmd_rm() {
 
   if container_running "$container"; then
     info "arrêt du conteneur..."
-    docker stop "$container" >/dev/null
+    "$CTR" stop "$container" >/dev/null
   fi
   if container_exists "$container"; then
-    docker rm "$container" >/dev/null
+    "$CTR" rm "$container" >/dev/null
   fi
   if [[ -d "$workspace" ]]; then
     rm -rf "$workspace"
@@ -273,7 +293,7 @@ cmd_rm() {
 
 # ── Point d'entrée ──────────────────────────────────────────────────────
 
-check_docker
+check_runtime
 
 case "${1:-}" in
   start)  shift; cmd_start "$@" ;;
