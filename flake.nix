@@ -1,14 +1,18 @@
 {
-  # Environnement pentest/CTF isolé : `nix develop` dans ce dépôt, rien n'est exposé hors du devShell.
-  # Deux profils disponibles :
-  #   nix develop        → profil light (~7 Go)
-  #   nix develop .#full → profil full  (~20-30 Go)
+  # Environnement pentest/CTF isolé via conteneurs Docker/Podman.
   #
-  # Conteneurisation Docker (branche nix-container) :
+  # Usage principal (conteneurisé) :
+  #   nix develop          → shell minimal avec uniquement la commande nyx
+  #   nyx install           → construit et charge l'image light
+  #   nyx start <nom>       → lance un workspace conteneurisé
+  #
+  # Usage alternatif (sans conteneur) :
+  #   nix develop .#light  → devShell complet profil light (~7 Go)
+  #   nix develop .#full   → devShell complet profil full  (~20-30 Go)
+  #
+  # Construction directe des images :
   #   nix build .#docker-light  → image Docker "nyx:light"
   #   nix build .#docker-full   → image Docker "nyx:full"
-  #   docker load < result      → charge l'image dans Docker
-  #   nyx start <nom>           → lance un workspace conteneurisé
   description = "Environnement pentest/CTF isolé";
 
   inputs = {
@@ -30,11 +34,24 @@
       };
     in
     {
-      # ── DevShells (approche classique sans conteneur) ───────────────
+      # ── DevShells ─────────────────────────────────────────────────────
       devShells = forAllSystems (system:
         let
           pkgs = pkgsFor system;
+          nyx = import ./nix/nyx.nix { inherit pkgs; };
 
+          # Shell minimal : uniquement la commande nyx (rapide à construire)
+          minimalShell = pkgs.mkShell {
+            packages = [ nyx ];
+            shellHook = ''
+              echo ""
+              echo "  ☽ nyx — pentest workspace manager"
+              echo "  Run 'nyx install' to build an image, then 'nyx start <name>' to begin."
+              echo ""
+            '';
+          };
+
+          # Shells complets : tous les outils pentest (approche sans conteneur)
           mkPentestShell = profile:
             let
               tools = import ./nix/tools.nix { inherit pkgs pwndbg profile; };
@@ -42,7 +59,6 @@
                 inherit pkgs profile;
                 toolCount = builtins.length tools.packages;
               };
-              nyx = import ./nix/nyx.nix { inherit pkgs; };
             in
             pkgs.mkShell {
               packages = tools.packages ++ hook.packages ++ [ nyx ];
@@ -50,7 +66,11 @@
             };
         in
         {
-          default = mkPentestShell "light";
+          # nix develop         → shell minimal avec nyx uniquement
+          # nix develop .#light → devShell complet profil light (sans conteneur)
+          # nix develop .#full  → devShell complet profil full (sans conteneur)
+          default = minimalShell;
+          light = mkPentestShell "light";
           full = mkPentestShell "full";
         });
 
