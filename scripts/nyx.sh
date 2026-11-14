@@ -2,12 +2,13 @@
 # nyx - gestionnaire d'environnements pentest conteneurisés.
 # Chaque workspace est un conteneur isolé (Docker ou Podman) avec tous les outils
 # de pentest, construit de façon déterministe avec Nix (dockerTools.buildLayeredImage).
-# Usage : nyx <start|stop|list|rm> [arguments]
+# Usage : nyx <commande> [arguments]
 set -euo pipefail
 
 readonly NYX_WORKSPACE="${NYX_WORKSPACE:-$HOME/nyx-workspace}"
 readonly NYX_IMAGE_PREFIX="nyx"
 readonly NYX_DEFAULT_PROFILE="light"
+readonly NYX_FLAKE="${NYX_FLAKE:-github:PurpleFlood/pentest-env/nix-container}"
 
 # Auto-détection du runtime conteneur : podman prioritaire, sinon docker.
 # Peut être forcé via NYX_RUNTIME=docker ou NYX_RUNTIME=podman.
@@ -38,23 +39,31 @@ warn() { printf '[nyx] avertissement : %s\n' "$*" >&2; }
 err()  { printf '[nyx] erreur : %s\n' "$*" >&2; }
 
 usage() {
-  cat <<'EOF'
+  cat <<EOF
 Usage : nyx <commande>
 
-  start <nom> [options]   Lance un environnement (le crée s'il n'existe pas)
+  install [light|full]    Construit et charge une image (défaut : light)
+  uninstall [light|full]  Supprime une image
+  images                  Liste les images nyx installées
+
+  start <nom> [options]   Lance un workspace (le crée s'il n'existe pas)
     --profile full|light  Profil d'outils (défaut : light)
     --vpn <fichier.ovpn>  Connecte le VPN automatiquement
 
-  stop <nom>              Arrête un environnement
-  list                    Liste les environnements et leur état
-  rm <nom>                Supprime un environnement et ses données
+  stop <nom>              Arrête un workspace
+  list                    Liste les workspaces et leur état
+  rm <nom>                Supprime un workspace et ses données
 
 Exemples :
+  nyx install full
   nyx start htb-box --vpn lab.ovpn
   nyx start bounty-target --profile full
+  nyx images
   nyx list
   nyx stop htb-box
   nyx rm htb-box
+
+Runtime : $CTR
 EOF
 }
 
@@ -67,6 +76,13 @@ check_runtime() {
   fi
 }
 
+check_nix() {
+  if ! command -v nix &>/dev/null; then
+    err "nix n'est pas installé (nécessaire pour construire les images)"
+    exit 1
+  fi
+}
+
 validate_name() {
   local name="$1"
   if [[ ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
@@ -75,7 +91,7 @@ validate_name() {
   fi
 }
 
-# ── Helpers Docker ───────────────────────────────────────────────────────
+# ── Helpers conteneur ────────────────────────────────────────────────────
 
 image_exists() {
   "$CTR" image inspect "$1" &>/dev/null 2>&1
@@ -89,7 +105,135 @@ container_exists() {
   "$CTR" ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
 }
 
-# ── Commandes ────────────────────────────────────────────────────────────
+# Détecte la source du flake : dépôt local si on est dedans, sinon GitHub.
+detect_flake_ref() {
+  local flake_dir
+  flake_dir=$(pwd)
+  if [[ -f "$flake_dir/flake.nix" ]] && grep -q 'docker-light\|docker-full' "$flake_dir/flake.nix" 2>/dev/null; then
+    printf '%s' "$flake_dir"
+  else
+    printf '%s' "$NYX_FLAKE"
+  fi
+}
+
+# ── Commandes : images ──────────────────────────────────────────────────
+
+cmd_install() {
+  local profile="${1:-$NYX_DEFAULT_PROFILE}"
+
+  if [[ "$profile" != "light" && "$profile" != "full" ]]; then
+    err "profil invalide : '$profile' (light ou full)"
+    exit 1
+  fi
+
+  check_nix
+
+  local image="$NYX_IMAGE_PREFIX:$profile"
+
+  if image_exists "$image"; then
+    info "image '$image' déjà installée"
+    printf '  Reconstruire ? [o/N] '
+    read -r answer
+    if [[ "$answer" != "o" && "$answer" != "O" ]]; then
+      return
+    fi
+  fi
+
+  local flake_ref
+  flake_ref=$(detect_flake_ref)
+  info "construction de l'image '$image' (profil: $profile)..."
+  info "source : $flake_ref"
+  info "cette opération peut prendre plusieurs minutes..."
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' RETURN
+
+  if ! nix build "${flake_ref}#docker-${profile}" --out-link "$tmpdir/result"; then
+    err "échec de la construction de l'image"
+    exit 1
+  fi
+
+  info "chargement de l'image dans $CTR..."
+  "$CTR" load < "$tmpdir/result"
+
+  info "image '$image' installée avec succès"
+}
+
+cmd_uninstall() {
+  local profile="${1:-}"
+
+  if [[ -z "$profile" ]]; then
+    # Proposer les images installées
+    info "images nyx installées :"
+    local found=0
+    for p in light full; do
+      if image_exists "$NYX_IMAGE_PREFIX:$p"; then
+        info "  - nyx:$p"
+        found=1
+      fi
+    done
+    if [[ $found -eq 0 ]]; then
+      info "  aucune image installée"
+      return
+    fi
+    printf '\nProfil à désinstaller (light/full) : '
+    read -r profile
+  fi
+
+  if [[ "$profile" != "light" && "$profile" != "full" ]]; then
+    err "profil invalide : '$profile' (light ou full)"
+    exit 1
+  fi
+
+  local image="$NYX_IMAGE_PREFIX:$profile"
+
+  if ! image_exists "$image"; then
+    info "image '$image' non installée"
+    return
+  fi
+
+  # Vérifier qu'aucun conteneur n'utilise cette image
+  local containers
+  containers=$("$CTR" ps -a --filter "ancestor=$image" --format '{{.Names}}' 2>/dev/null) || true
+  if [[ -n "$containers" ]]; then
+    err "des workspaces utilisent cette image :"
+    echo "$containers" | while read -r c; do info "  - ${c#nyx-}"; done
+    err "supprimez-les d'abord avec 'nyx rm <nom>'"
+    exit 1
+  fi
+
+  "$CTR" rmi "$image" >/dev/null
+  info "image '$image' désinstallée"
+}
+
+cmd_images() {
+  printf '%-15s %-12s %-15s\n' "IMAGE" "TAILLE" "ÉTAT"
+  printf '%-15s %-12s %-15s\n' "-----" "------" "----"
+
+  for profile in light full; do
+    local image="$NYX_IMAGE_PREFIX:$profile"
+    local state="non installée"
+    local size="-"
+
+    if image_exists "$image"; then
+      state="installée"
+      size=$("$CTR" image inspect "$image" --format '{{.Size}}' 2>/dev/null) || true
+      # Convertir en Mo/Go lisible
+      if [[ -n "$size" && "$size" =~ ^[0-9]+$ ]]; then
+        if [[ "$size" -gt 1073741824 ]]; then
+          size="$(( size / 1073741824 )) Go"
+        elif [[ "$size" -gt 1048576 ]]; then
+          size="$(( size / 1048576 )) Mo"
+        fi
+      fi
+    fi
+
+    printf '%-15s %-12s %-15s\n' "nyx:$profile" "$size" "$state"
+  done
+}
+
+# ── Commandes : workspaces ───────────────────────────────────────────────
 
 cmd_start() {
   if [[ $# -lt 1 ]]; then
@@ -147,18 +291,21 @@ cmd_start() {
     exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
   fi
 
-  # Vérifier que l'image existe
+  # Vérifier que l'image existe, proposer l'install sinon
   if ! image_exists "$image"; then
-    err "image '$image' introuvable"
-    info "construisez-la avec :"
-    info "  nix build .#docker-$profile && $CTR load < result"
-    exit 1
+    warn "image '$image' introuvable"
+    printf '  Installer maintenant ? [O/n] '
+    read -r answer
+    if [[ "$answer" == "n" || "$answer" == "N" ]]; then
+      exit 1
+    fi
+    cmd_install "$profile"
   fi
 
   # Créer le répertoire workspace sur l'hôte
   mkdir -p "$workspace"
 
-  # Assembler les arguments "$CTR" run
+  # Assembler les arguments de lancement
   local -a run_args=(
     --name "$container"
     --hostname "$name"
@@ -296,10 +443,13 @@ cmd_rm() {
 check_runtime
 
 case "${1:-}" in
-  start)  shift; cmd_start "$@" ;;
-  stop)   shift; cmd_stop "$@" ;;
-  list)   cmd_list ;;
-  rm)     shift; cmd_rm "$@" ;;
+  install)    shift; cmd_install "$@" ;;
+  uninstall)  shift; cmd_uninstall "$@" ;;
+  images)     cmd_images ;;
+  start)      shift; cmd_start "$@" ;;
+  stop)       shift; cmd_stop "$@" ;;
+  list)       cmd_list ;;
+  rm)         shift; cmd_rm "$@" ;;
   -h|--help|help|"") usage ;;
-  *)      err "commande inconnue : $1"; usage >&2; exit 1 ;;
+  *)          err "commande inconnue : $1"; usage >&2; exit 1 ;;
 esac
