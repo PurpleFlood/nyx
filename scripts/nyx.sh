@@ -310,7 +310,7 @@ cmd_start() {
     --name "$container"
     --hostname "$name"
     -d
-    --cap-add=NET_ADMIN
+    --privileged
     --device=/dev/net/tun
     -v "$workspace:/workspace"
     -e "NYX_NAME=$name"
