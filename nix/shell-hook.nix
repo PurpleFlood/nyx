@@ -1,7 +1,7 @@
-# Point d'entrée du devShell : scripts du projet dans le PATH, fichier rc partagé
-# (PS1, aliases, fonctions) et shellHook (bannière, variables, workspaces).
-# Le fichier rc est aussi utilisé par `ctf-vpn shell` pour réinjecter l'environnement
-# dans le namespace réseau.
+# DevShell entry point: project scripts in PATH, shared rc file
+# (PS1, aliases, functions) and shellHook (banner, variables, workspaces).
+# The rc file is also used by `ctf-vpn shell` to inject the environment
+# into the network namespace.
 { pkgs, toolCount, profile ? "light" }:
 let
   ctfVpn = import ./netns.nix { inherit pkgs; };
@@ -39,7 +39,7 @@ let
   profileTag = if profile == "full" then "FULL" else "LIGHT";
 
   rcFile = pkgs.writeText "pentest-rc" ''
-    # Environnement pentest : prompt, aliases et fonctions (sourcé par le devShell et par ctf-vpn shell).
+    # Pentest environment: prompt, aliases and functions (sourced by devShell and ctf-vpn shell).
     if [[ "''${CTF_VPN:-0}" == 1 ]]; then
       ctf_tag='[CTF:VPN:${profileTag}]'
     else
@@ -57,7 +57,7 @@ let
 
     listen() {
       if [[ -z "''${1:-}" ]]; then
-        echo "usage : listen <port>" >&2
+        echo "usage: listen <port>" >&2
         return 1
       fi
       nc -lvnp "$1"
@@ -65,7 +65,7 @@ let
 
     ctf-htb() {
       if [[ -z "''${1:-}" ]]; then
-        echo "usage : ctf-htb <fichier.ovpn>" >&2
+        echo "usage: ctf-htb <file.ovpn>" >&2
         return 1
       fi
       ctf-vpn start "$1" && ctf-vpn shell
@@ -74,8 +74,8 @@ let
 
   banner = ''
     +--------------------------------------------------+
-    |   PENTEST / CTF  -  environnement isole (Nix)    |
-    |   Profil : ${if profile == "full" then "FULL (arsenal complet)              " else "LIGHT (essentiel)                  "}|
+    |   PENTEST / CTF  -  isolated environment (Nix)   |
+    |   Profile: ${if profile == "full" then "FULL (complete arsenal)              " else "LIGHT (essentials)                 "}|
     +--------------------------------------------------+
   '';
 
@@ -91,10 +91,10 @@ let
 
     cat <<'BANNER'
     ${banner}
-    Profil         : ${profile} | Paquets chargés : ${toString toolCount} (+ scripts du projet)
-    Démarrage      : ctf-new <nom> | ctf-htb <fichier.ovpn> | fetch-wordlists minimal
-    Changer profil : nix develop .#full  ou  nix develop (light)
-    Aide complète  : voir README.md
+    Profile        : ${profile} | Loaded packages: ${toString toolCount} (+ project scripts)
+    Quick start    : ctf-new <name> | ctf-htb <file.ovpn> | fetch-wordlists minimal
+    Switch profile : nix develop .#full  or  nix develop (light)
+    Full help      : see README.md
     BANNER
   '';
 in

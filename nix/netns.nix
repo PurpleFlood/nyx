@@ -1,6 +1,6 @@
-# Empaquette scripts/ctf-vpn.sh avec ses dépendances réseau (iproute2, iptables, openvpn).
-# writeShellApplication ajoute set -euo pipefail et lance shellcheck au build.
-# sudo n'est pas empaqueté : on utilise celui du système (setuid NixOS).
+# Packages scripts/ctf-vpn.sh with its network dependencies.
+# writeShellApplication adds set -euo pipefail and runs shellcheck at build.
+# sudo is not packaged: uses the host's setuid binary.
 { pkgs }:
 pkgs.writeShellApplication {
   name = "ctf-vpn";

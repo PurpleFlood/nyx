@@ -9,6 +9,7 @@ readonly NYX_WORKSPACE="${NYX_WORKSPACE:-$HOME/nyx-workspace}"
 readonly NYX_IMAGE_PREFIX="nyx"
 readonly NYX_DEFAULT_PROFILE="light"
 readonly NYX_FLAKE="${NYX_FLAKE:-github:PurpleFlood/pentest-env/nix-container}"
+readonly NYX_BUILD_DIR="${NYX_BUILD_DIR:-$HOME/.nyx/build}"
 
 # Auto-détection du runtime conteneur : podman prioritaire, sinon docker.
 # Peut être forcé via NYX_RUNTIME=docker ou NYX_RUNTIME=podman.
@@ -44,6 +45,7 @@ Usage : nyx <commande>
 
   install [light|full]    Construit et charge une image (défaut : light)
   uninstall [light|full]  Supprime une image
+  update [light|full]     Met à jour une image (rebuild depuis le flake)
   images                  Liste les images nyx installées
 
   start <nom> [options]   Lance un workspace (le crée s'il n'existe pas)
@@ -51,13 +53,17 @@ Usage : nyx <commande>
     --vpn <fichier.ovpn>  Connecte le VPN automatiquement
 
   stop <nom>              Arrête un workspace
+  restart <nom> [options] Recrée le conteneur avec la dernière image
+    --profile full|light  Change le profil d'outils
   list                    Liste les workspaces et leur état
   rm <nom>                Supprime un workspace et ses données
 
 Exemples :
   nyx install full
+  nyx update full
   nyx start htb-box --vpn lab.ovpn
   nyx start bounty-target --profile full
+  nyx restart htb-box --profile full
   nyx images
   nyx list
   nyx stop htb-box
@@ -67,7 +73,7 @@ Runtime : $CTR
 EOF
 }
 
-# Verifications 
+# ── Vérifications ────────────────────────────────────────────────────────
 
 check_runtime() {
   if ! "$CTR" info &>/dev/null 2>&1; then
@@ -91,7 +97,7 @@ validate_name() {
   fi
 }
 
-# Containers helpers
+# ── Helpers conteneur ────────────────────────────────────────────────────
 
 image_exists() {
   "$CTR" image inspect "$1" &>/dev/null 2>&1
@@ -103,6 +109,82 @@ container_running() {
 
 container_exists() {
   "$CTR" ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
+}
+
+# Récupère le profil d'un conteneur existant.
+get_container_profile() {
+  local container="$1"
+  "$CTR" inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container" 2>/dev/null \
+    | grep '^NYX_PROFILE=' | cut -d= -f2
+}
+
+# Récupère le chemin hôte du fichier VPN monté dans un conteneur.
+get_container_vpn() {
+  local container="$1"
+  "$CTR" inspect --format '{{range .Mounts}}{{if eq .Destination "/vpn/config.ovpn"}}{{.Source}}{{end}}{{end}}' "$container" 2>/dev/null || true
+}
+
+# Vérifie si l'image du conteneur est différente de l'image actuelle.
+# Retourne 0 (vrai) si le conteneur utilise une ancienne version de l'image.
+container_image_outdated() {
+  local container="$1"
+  local profile="$2"
+  local image="$NYX_IMAGE_PREFIX:$profile"
+
+  local container_image_id current_image_id
+  container_image_id=$("$CTR" inspect --format '{{.Image}}' "$container" 2>/dev/null) || return 1
+  current_image_id=$("$CTR" image inspect --format '{{.Id}}' "$image" 2>/dev/null) || return 1
+
+  [[ "$container_image_id" != "$current_image_id" ]]
+}
+
+# Crée un conteneur avec les arguments standard (X11, Wayland, VPN…).
+# Usage : create_container <nom> <profil> [chemin_vpn]
+create_container() {
+  local name="$1"
+  local profile="$2"
+  local vpn="${3:-}"
+
+  local container="nyx-$name"
+  local workspace="$NYX_WORKSPACE/$name"
+  local image="$NYX_IMAGE_PREFIX:$profile"
+
+  mkdir -p "$workspace"
+
+  local -a run_args=(
+    --name "$container"
+    --hostname "$name"
+    -d
+    --privileged
+    --device=/dev/net/tun
+    -v "$workspace:/workspace"
+    -e "NYX_NAME=$name"
+  )
+
+  # Forwarding X11
+  if [[ -n "${DISPLAY:-}" ]]; then
+    run_args+=(-e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix)
+  fi
+
+  # Forwarding Wayland
+  if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    local xdg_dir
+    xdg_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    run_args+=(
+      -e "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+      -e "XDG_RUNTIME_DIR=/tmp/xdg"
+      -v "$xdg_dir/$WAYLAND_DISPLAY:/tmp/xdg/$WAYLAND_DISPLAY"
+    )
+  fi
+
+  # VPN
+  if [[ -n "$vpn" && -r "$vpn" ]]; then
+    local vpn_abs
+    vpn_abs=$(readlink -f "$vpn")
+    run_args+=(-v "$vpn_abs:/vpn/config.ovpn:ro" -e "NYX_VPN=1")
+  fi
+
+  "$CTR" run "${run_args[@]}" "$image" >/dev/null
 }
 
 # Détecte la source du flake : dépôt local si on est dedans, sinon GitHub.
@@ -145,17 +227,17 @@ cmd_install() {
   info "source : $flake_ref"
   info "cette opération peut prendre plusieurs minutes..."
 
-  local tmpdir
-  tmpdir=$(mktemp -d)
-  trap 'rm -rf "$tmpdir"' RETURN
+  mkdir -p "$NYX_BUILD_DIR"
 
-  if ! nix build "${flake_ref}#docker-${profile}" --out-link "$tmpdir/result"; then
+  if ! nix build "${flake_ref}#docker-${profile}" --out-link "$NYX_BUILD_DIR/result"; then
     err "échec de la construction de l'image"
     exit 1
   fi
 
+  export TMPDIR="$NYX_BUILD_DIR"
+
   info "chargement de l'image dans $CTR..."
-  "$CTR" load < "$tmpdir/result"
+  "$CTR" load < "$NYX_BUILD_DIR/result"
 
   info "image '$image' installée avec succès"
 }
@@ -193,18 +275,120 @@ cmd_uninstall() {
     return
   fi
 
-  # Vérifier qu'aucun conteneur n'utilise cette image
+  # Stopper et supprimer les conteneurs qui utilisent cette image
   local containers
   containers=$("$CTR" ps -a --filter "ancestor=$image" --format '{{.Names}}' 2>/dev/null) || true
   if [[ -n "$containers" ]]; then
-    err "des workspaces utilisent cette image :"
-    echo "$containers" | while read -r c; do info "  - ${c#nyx-}"; done
-    err "supprimez-les d'abord avec 'nyx rm <nom>'"
-    exit 1
+    info "suppression des conteneurs liés à l'image :"
+    echo "$containers" | while read -r c; do
+      info "  - ${c#nyx-}"
+      "$CTR" stop "$c" &>/dev/null || true
+      "$CTR" rm "$c" &>/dev/null || true
+    done
   fi
 
   "$CTR" rmi "$image" >/dev/null
   info "image '$image' désinstallée"
+}
+
+cmd_update() {
+  local profile="${1:-}"
+
+  check_nix
+
+  # Si pas de profil spécifié → update toutes les images installées
+  if [[ -z "$profile" ]]; then
+    local installed=()
+    for p in light full; do
+      if image_exists "$NYX_IMAGE_PREFIX:$p"; then
+        installed+=("$p")
+      fi
+    done
+
+    if [[ ${#installed[@]} -eq 0 ]]; then
+      info "aucune image installée, rien à mettre à jour"
+      return
+    fi
+
+    info "images installées : ${installed[*]}"
+    printf '  Mettre à jour toutes les images ? [O/n] '
+    read -r answer
+    if [[ "$answer" == "n" || "$answer" == "N" ]]; then
+      return
+    fi
+
+    for p in "${installed[@]}"; do
+      cmd_update "$p"
+    done
+    return
+  fi
+
+  if [[ "$profile" != "light" && "$profile" != "full" ]]; then
+    err "profil invalide : '$profile' (light ou full)"
+    exit 1
+  fi
+
+  local image="$NYX_IMAGE_PREFIX:$profile"
+
+  if ! image_exists "$image"; then
+    err "image '$image' non installée, utilisez 'nyx install $profile'"
+    exit 1
+  fi
+
+  info "mise à jour de l'image '$image'..."
+
+  check_nix
+
+  local image="$NYX_IMAGE_PREFIX:$profile"
+
+  if ! image_exists "$image"; then
+    info "image '$image' non installée, installation..."
+  else
+    info "mise à jour de l'image '$image'..."
+  fi
+
+  local flake_ref
+  flake_ref=$(detect_flake_ref)
+  info "source : $flake_ref"
+  info "cette opération peut prendre plusieurs minutes..."
+
+  mkdir -p "$NYX_BUILD_DIR"
+
+  if ! nix build "${flake_ref}#docker-${profile}" --out-link "$NYX_BUILD_DIR/result"; then
+    err "échec de la construction de l'image"
+    exit 1
+  fi
+
+  export TMPDIR="$NYX_BUILD_DIR"
+
+  info "chargement de l'image dans $CTR..."
+  "$CTR" load < "$NYX_BUILD_DIR/result"
+
+  info "image '$image' mise à jour avec succès"
+
+  # Lister les workspaces concernés
+  local outdated=""
+  if [[ -d "$NYX_WORKSPACE" ]]; then
+    for dir in "$NYX_WORKSPACE"/*/; do
+      [[ -d "$dir" ]] || continue
+      local ws_name
+      ws_name=$(basename "$dir")
+      local container="nyx-$ws_name"
+      if container_exists "$container"; then
+        local ws_profile
+        ws_profile=$(get_container_profile "$container")
+        if [[ "${ws_profile:-}" == "$profile" ]]; then
+          outdated+="  - $ws_name"$'\n'
+        fi
+      fi
+    done
+  fi
+
+  if [[ -n "$outdated" ]]; then
+    info "workspaces utilisant nyx:$profile :"
+    printf '%s' "$outdated"
+    info "utilisez 'nyx restart <nom>' pour appliquer la mise à jour"
+  fi
 }
 
 cmd_images() {
@@ -283,8 +467,30 @@ cmd_start() {
     exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
   fi
 
-  # Conteneur existant mais arrêté → redémarrer et entrer
+  # Conteneur existant mais arrêté → vérifier mise à jour et redémarrer
   if container_exists "$container"; then
+    local current_profile
+    current_profile=$(get_container_profile "$container")
+
+    # Détecter si l'image a été mise à jour
+    if container_image_outdated "$container" "${current_profile:-$profile}"; then
+      warn "une mise à jour de l'image nyx:${current_profile:-$profile} est disponible"
+      printf '  Mettre à jour le workspace ? [O/n] '
+      read -r answer
+      if [[ "$answer" != "n" && "$answer" != "N" ]]; then
+        info "mise à jour du workspace '$name'..."
+        local vpn_path
+        vpn_path=$(get_container_vpn "$container")
+        if container_running "$container"; then
+          "$CTR" stop "$container" >/dev/null
+        fi
+        "$CTR" rm "$container" >/dev/null
+        create_container "$name" "${current_profile:-$profile}" "$vpn_path"
+        sleep 2
+        exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
+      fi
+    fi
+
     info "redémarrage du workspace '$name'..."
     "$CTR" start "$container" >/dev/null
     sleep 2
@@ -302,49 +508,14 @@ cmd_start() {
     cmd_install "$profile"
   fi
 
-  # Créer le répertoire workspace sur l'hôte
-  mkdir -p "$workspace"
-
-  # Assembler les arguments de lancement
-  local -a run_args=(
-    --name "$container"
-    --hostname "$name"
-    -d
-    --privileged
-    --device=/dev/net/tun
-    -v "$workspace:/workspace"
-    -e "NYX_NAME=$name"
-  )
-
-  # Forwarding X11 pour les outils graphiques (Burpsuite, Firefox, Wireshark…)
-  if [[ -n "${DISPLAY:-}" ]]; then
-    run_args+=(-e "DISPLAY=$DISPLAY" -v /tmp/.X11-unix:/tmp/.X11-unix)
-  fi
-
-  # Forwarding Wayland
-  if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
-    local xdg_dir
-    xdg_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-    run_args+=(
-      -e "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
-      -e "XDG_RUNTIME_DIR=/tmp/xdg"
-      -v "$xdg_dir/$WAYLAND_DISPLAY:/tmp/xdg/$WAYLAND_DISPLAY"
-    )
-  fi
-
-  # VPN : monter le fichier .ovpn dans le conteneur
-  if [[ -n "$vpn" ]]; then
-    if [[ ! -r "$vpn" ]]; then
-      err "fichier VPN introuvable ou illisible : $vpn"
-      exit 1
-    fi
-    local vpn_abs
-    vpn_abs=$(readlink -f "$vpn")
-    run_args+=(-v "$vpn_abs:/vpn/config.ovpn:ro" -e "NYX_VPN=1")
+  # Nouveau workspace
+  if [[ -n "$vpn" && ! -r "$vpn" ]]; then
+    err "fichier VPN introuvable ou illisible : $vpn"
+    exit 1
   fi
 
   info "lancement du workspace '$name' (profil: $profile)..."
-  "$CTR" run "${run_args[@]}" "$image" >/dev/null
+  create_container "$name" "$profile" "$vpn"
 
   # Attendre que l'entrypoint démarre
   sleep 2
@@ -369,6 +540,84 @@ cmd_stop() {
   else
     err "workspace '$name' introuvable"
   fi
+}
+
+cmd_restart() {
+  if [[ $# -lt 1 ]]; then
+    err "nom du workspace manquant"
+    echo "Usage : nyx restart <nom> [--profile full|light]" >&2
+    exit 1
+  fi
+
+  local name="$1"
+  shift
+  validate_name "$name"
+
+  local container="nyx-$name"
+  local new_profile=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile)
+        if [[ $# -lt 2 ]]; then err "--profile nécessite un argument (light|full)"; exit 1; fi
+        new_profile="$2"
+        shift 2
+        ;;
+      *)
+        err "option inconnue : $1"
+        exit 1
+        ;;
+    esac
+  done
+
+  if [[ -n "$new_profile" && "$new_profile" != "light" && "$new_profile" != "full" ]]; then
+    err "profil invalide : '$new_profile' (light ou full)"
+    exit 1
+  fi
+
+  if ! container_exists "$container"; then
+    err "workspace '$name' introuvable"
+    exit 1
+  fi
+
+  # Récupérer les infos du conteneur actuel
+  local current_profile vpn_path
+  current_profile=$(get_container_profile "$container")
+  vpn_path=$(get_container_vpn "$container")
+
+  local profile="${new_profile:-${current_profile:-$NYX_DEFAULT_PROFILE}}"
+  local image="$NYX_IMAGE_PREFIX:$profile"
+
+  # Vérifier que l'image existe
+  if ! image_exists "$image"; then
+    warn "image '$image' introuvable"
+    printf '  Installer maintenant ? [O/n] '
+    read -r answer
+    if [[ "$answer" == "n" || "$answer" == "N" ]]; then
+      exit 1
+    fi
+    cmd_install "$profile"
+  fi
+
+  if [[ -n "$new_profile" && "$new_profile" != "${current_profile:-}" ]]; then
+    info "changement de profil : ${current_profile:-?} → $new_profile"
+  fi
+
+  # Stop si actif
+  if container_running "$container"; then
+    info "arrêt du workspace '$name'..."
+    "$CTR" stop "$container" >/dev/null
+  fi
+
+  # Supprimer le conteneur (pas le volume !)
+  "$CTR" rm "$container" >/dev/null
+
+  # Recréer avec la nouvelle image
+  info "recréation du workspace '$name' (profil: $profile)..."
+  create_container "$name" "$profile" "$vpn_path"
+
+  sleep 2
+  exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
 }
 
 cmd_list() {
@@ -445,9 +694,11 @@ check_runtime
 case "${1:-}" in
   install)    shift; cmd_install "$@" ;;
   uninstall)  shift; cmd_uninstall "$@" ;;
+  update)     shift; cmd_update "$@" ;;
   images)     cmd_images ;;
   start)      shift; cmd_start "$@" ;;
   stop)       shift; cmd_stop "$@" ;;
+  restart)    shift; cmd_restart "$@" ;;
   list)       cmd_list ;;
   rm)         shift; cmd_rm "$@" ;;
   -h|--help|help|"") usage ;;

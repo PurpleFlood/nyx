@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Gestion d'un VPN CTF (HTB/THM) isolé dans un network namespace.
-# Le trafic du namespace sort par l'interface physique de l'hôte (table de routage dédiée),
-# jamais par wg0 : le WireGuard de l'hôte reste intact.
-# Usage : ctf-vpn <start <fichier.ovpn> | shell | status | stop>
+# Manages a CTF VPN (HTB/THM) isolated in a network namespace.
+# Namespace traffic exits via the host's physical interface (dedicated routing table),
+# never through wg0: the host's WireGuard stays intact.
+# Usage: ctf-vpn <start <file.ovpn> | shell | status | stop>
 set -euo pipefail
 
 readonly NS="pentest-ns"
@@ -20,21 +20,21 @@ readonly OVPN_LOG="$STATE_DIR/openvpn.log"
 readonly NETNS_ETC="/etc/netns/$NS"
 
 info() { printf '[ctf-vpn] %s\n' "$*"; }
-warn() { printf '[ctf-vpn] avertissement : %s\n' "$*" >&2; }
-err() { printf '[ctf-vpn] erreur : %s\n' "$*" >&2; }
+warn() { printf '[ctf-vpn] warning: %s\n' "$*" >&2; }
+err() { printf '[ctf-vpn] error: %s\n' "$*" >&2; }
 
 usage() {
   cat <<'EOF'
-Usage : ctf-vpn <commande>
-  start <fichier.ovpn>  crée le namespace et lance OpenVPN dedans
-  shell                 ouvre un shell dans le namespace VPN
-  status                affiche l'état du namespace et du VPN
-  stop                  arrête OpenVPN et nettoie le namespace
+Usage: ctf-vpn <command>
+  start <file.ovpn>  create namespace and start OpenVPN inside it
+  shell               open a shell in the VPN namespace
+  status              show namespace and VPN state
+  stop                stop OpenVPN and clean up the namespace
 EOF
 }
 
-# Relance le script en root (opérations réseau) en conservant l'environnement
-# pour que le shell du namespace hérite de DISPLAY, PATH, PENTEST_RC, etc.
+# Re-exec as root (network operations) while preserving the environment
+# so the namespace shell inherits DISPLAY, PATH, PENTEST_RC, etc.
 PATH_FILE="/tmp/ctf-vpn-caller-path.$(id -u)"
 readonly PATH_FILE
 if [[ $EUID -ne 0 ]]; then
@@ -64,18 +64,18 @@ vpn_running() {
   [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
 }
 
-# Interface de sortie : route par défaut hors WireGuard, tunnels et veth.
+# Detect uplink interface: default route excluding WireGuard, tunnels and veth.
 detect_uplink() {
   local line
   line=$(ip -4 route show default | awk '$0 !~ /dev (wg|tun|tap|veth|tailscale)/ { print; exit }') || true
   if [[ -z "$line" ]]; then
-    err "aucune route par défaut hors WireGuard : impossible de sortir par l'interface physique"
+    err "no default route outside WireGuard: cannot exit via physical interface"
     return 1
   fi
   UPLINK_GW=$(awk '{ for (i = 1; i < NF; i++) if ($i == "via") { print $(i + 1); exit } }' <<<"$line")
   UPLINK_IF=$(awk '{ for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit } }' <<<"$line")
   if [[ -z "$UPLINK_GW" || -z "$UPLINK_IF" ]]; then
-    err "route par défaut incomplète : $line"
+    err "incomplete default route: $line"
     return 1
   fi
 }
@@ -90,7 +90,7 @@ PREV_IP_FORWARD="$PREV_IP_FORWARD"
 EOF
 }
 
-# Annule tout ce que start a pu créer ; chaque étape tolère l'absence de la ressource.
+# Undo everything start may have created; each step tolerates missing resources.
 teardown() {
   local uplink_if="" prev_fwd=""
   if [[ -f "$STATE_FILE" ]]; then
@@ -144,7 +144,7 @@ wait_vpn() {
 on_start_exit() {
   local rc=$?
   if [[ $STARTED -ne 1 ]]; then
-    warn "échec du démarrage : nettoyage du namespace"
+    warn "startup failed: cleaning up namespace"
     teardown
   fi
   exit "$rc"
@@ -153,21 +153,21 @@ on_start_exit() {
 cmd_start() {
   local ovpn="${1:-}"
   if [[ -z "$ovpn" ]]; then
-    err "fichier .ovpn manquant (ctf-vpn start <fichier.ovpn>)"
+    err "missing .ovpn file (ctf-vpn start <file.ovpn>)"
     exit 1
   fi
   if [[ ! -r "$ovpn" ]]; then
-    err "fichier introuvable ou illisible : $ovpn"
+    err "file not found or unreadable: $ovpn"
     exit 1
   fi
   ovpn=$(readlink -f "$ovpn")
 
   if namespace_exists; then
     if vpn_running; then
-      info "le VPN est déjà actif dans le namespace '$NS' (pid $(cat "$PID_FILE"))"
+      info "VPN already active in namespace '$NS' (pid $(cat "$PID_FILE"))"
       exit 0
     fi
-    err "le namespace '$NS' existe mais le VPN n'est pas actif : lancez 'ctf-vpn stop' puis relancez 'start'"
+    err "namespace '$NS' exists but VPN is not running: run 'ctf-vpn stop' then restart"
     exit 1
   fi
 
@@ -175,12 +175,12 @@ cmd_start() {
   trap on_start_exit EXIT
 
   detect_uplink
-  info "sortie physique : $UPLINK_IF (passerelle $UPLINK_GW)"
+  info "physical uplink: $UPLINK_IF (gateway $UPLINK_GW)"
 
   PREV_IP_FORWARD=$(sysctl -n net.ipv4.ip_forward)
   write_state
 
-  info "création du namespace '$NS' et de la paire veth"
+  info "creating namespace '$NS' and veth pair"
   ip netns add "$NS"
   ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
   ip link set "$VETH_NS" netns "$NS"
@@ -191,7 +191,7 @@ cmd_start() {
   ip -n "$NS" link set lo up
   ip -n "$NS" route add default via "$HOST_IP"
 
-  info "routage : le namespace sort par $UPLINK_IF, jamais par WireGuard"
+  info "routing: namespace exits via $UPLINK_IF, never through WireGuard"
   ip route replace default via "$UPLINK_GW" dev "$UPLINK_IF" table "$RT_TABLE"
   ip rule add from "$SUBNET" lookup "$RT_TABLE" priority "$RULE_PRIO"
 
@@ -203,34 +203,34 @@ cmd_start() {
   mkdir -p "$NETNS_ETC"
   printf 'nameserver 1.1.1.1\nnameserver 9.9.9.9\n' >"$NETNS_ETC/resolv.conf"
 
-  info "lancement d'OpenVPN dans le namespace"
+  info "starting OpenVPN in the namespace"
   ip netns exec "$NS" openvpn --config "$ovpn" --daemon ctf-vpn \
     --writepid "$PID_FILE" --log "$OVPN_LOG" --verb 3
 
   if ! wait_vpn; then
-    err "OpenVPN n'a pas établi la connexion (voir $OVPN_LOG)"
+    err "OpenVPN failed to connect (see $OVPN_LOG)"
     exit 1
   fi
 
   STARTED=1
-  info "VPN connecté"
+  info "VPN connected"
   show_summary
 }
 
 show_summary() {
-  info "interfaces du namespace :"
+  info "namespace interfaces:"
   ip -n "$NS" -br addr
-  info "route par défaut du namespace :"
+  info "namespace default route:"
   ip -n "$NS" route show default
 }
 
 cmd_shell() {
   if ! namespace_exists; then
-    err "le namespace '$NS' n'existe pas : lancez 'ctf-vpn start <fichier.ovpn>' d'abord"
+    err "namespace '$NS' does not exist: run 'ctf-vpn start <file.ovpn>' first"
     exit 1
   fi
   if [[ -z "${PENTEST_RC:-}" || ! -r "${PENTEST_RC:-}" ]]; then
-    err "PENTEST_RC absent : lancez ctf-vpn depuis le devShell (nix develop)"
+    err "PENTEST_RC not set: run ctf-vpn from the devShell (nix develop)"
     exit 1
   fi
 
@@ -261,29 +261,29 @@ cmd_shell() {
 
 cmd_status() {
   if namespace_exists; then
-    info "namespace '$NS' : présent"
+    info "namespace '$NS': present"
     show_summary
     if vpn_running; then
-      info "OpenVPN : actif (pid $(cat "$PID_FILE"))"
+      info "OpenVPN: active (pid $(cat "$PID_FILE"))"
     else
-      info "OpenVPN : inactif"
+      info "OpenVPN: inactive"
     fi
   else
-    info "namespace '$NS' : absent"
+    info "namespace '$NS': absent"
   fi
   if [[ -f "$STATE_FILE" ]]; then
     # shellcheck disable=SC1090
-    info "ip_forward : $(sysctl -n net.ipv4.ip_forward) (précédent : $(. "$STATE_FILE"; echo "${PREV_IP_FORWARD:-?}"))"
+    info "ip_forward: $(sysctl -n net.ipv4.ip_forward) (previous: $(. "$STATE_FILE"; echo "${PREV_IP_FORWARD:-?}"))"
   fi
 }
 
 cmd_stop() {
   if ! namespace_exists && [[ ! -f "$STATE_FILE" && ! -f "$PID_FILE" ]]; then
-    info "rien à nettoyer"
+    info "nothing to clean up"
     exit 0
   fi
   teardown
-  info "namespace, règles NAT et routage supprimés"
+  info "namespace, NAT rules and routing cleaned up"
 }
 
 case "${1:-}" in
@@ -292,5 +292,5 @@ case "${1:-}" in
   status) cmd_status ;;
   stop) cmd_stop ;;
   -h|--help|help|"") usage ;;
-  *) err "commande inconnue : $1"; usage >&2; exit 1 ;;
+  *) err "unknown command: $1"; usage >&2; exit 1 ;;
 esac

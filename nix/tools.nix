@@ -1,17 +1,17 @@
-# Liste des outils du devShell, organisée par phase de pentest.
-# Deux profils disponibles :
-#   - "light" (~7 Go) : 2-3 outils par phase, suffisant pour la plupart des CTF.
-#   - "full"  (~20-30 Go) : arsenal complet avec outils avancés par phase.
+# Pentest tools organised by methodology phase.
+# Two profiles:
+#   - "light" (~7 GiB): 2-3 tools per phase, enough for most CTFs.
+#   - "full"  (~20-30 GiB): complete arsenal with advanced tools.
 #
-# Choix documentés :
-#  - smbclient : absent comme attribut, fourni par le paquet `samba`.
-#  - ncat : absent de nixpkgs, fourni par `nmap` (binaire ncat/nping inclus).
-#  - linpeas : absent de nixpkgs, téléchargé par scripts/fetch-wordlists.sh.
-#  - pwndbg : pas dans nixpkgs, consommé via l'input flake officiel pwndbg/pwndbg.
-#  - hashid : préféré à hash-identifier (Python 3, identification plus à jour).
-#  - snmpcheck : outil SNMP d'énumération ; net-snmp apporte snmpwalk/snmpget (requêtes brutes).
-#  - Les paquets non disponibles sur la plateforme courante sont filtrés (ex. burpsuite hors x86_64).
-#  - Firefox : livré avec uBlock Origin pré-installé via les policies entreprise Mozilla.
+# Notable choices:
+#  - smbclient: provided by the `samba` package.
+#  - ncat: provided by `nmap` (includes ncat/nping).
+#  - linpeas: not in nixpkgs, downloaded by scripts/fetch-wordlists.sh.
+#  - pwndbg: not in nixpkgs, consumed via the official pwndbg/pwndbg flake input.
+#  - hashid: preferred over hash-identifier (Python 3, more up-to-date).
+#  - snmpcheck: SNMP enumeration tool; net-snmp provides snmpwalk/snmpget (raw queries).
+#  - Platform-unsupported packages are filtered out (e.g. burpsuite outside x86_64).
+#  - Firefox: shipped with uBlock Origin and FoxyProxy pre-installed via enterprise policies.
 {
   pkgs,
   pwndbg,
@@ -21,8 +21,7 @@ let
   lib = pkgs.lib;
   isFull = profile == "full";
 
-  # Firefox avec uBlock Origin installé via les enterprise policies.
-  # L'extension est automatiquement téléchargée et activée au premier lancement.
+  # Firefox with extensions via enterprise policies.
   firefoxCustom = pkgs.wrapFirefox pkgs.firefox-unwrapped {
     extraPolicies = {
       # Extensions
@@ -38,11 +37,11 @@ let
           install_url = "https://addons.mozilla.org/firefox/downloads/latest/foxyproxy-standard/latest.xpi";
         };
       };
-      # Pas d'écran de bienvenue / config au premier lancement
+      # Skip first-run / post-update pages
       OverrideFirstRunPage = "";
       OverridePostUpdatePage = "";
       DontCheckDefaultBrowser = true;
-      # Thème dark
+      # Dark theme
       Preferences = {
         "extensions.activeThemeID" = "firefox-compact-dark@mozilla.org";
       };
@@ -64,17 +63,17 @@ let
   );
 
   # ──────────────────────────────────────────────
-  # Groupes de base (profil light)
+  # Base groups (light profile)
   # ──────────────────────────────────────────────
   groups = {
-    # Phase 1 : reconnaissance passive (OSINT)
+    # Phase 1: passive recon (OSINT)
     recon = with pkgs; [
       whois
       theharvester
       dnsrecon
     ];
 
-    # Phase 2 : scan et énumération
+    # Phase 2: scanning & enumeration
     scanning = with pkgs; [
       nmap
       masscan
@@ -84,7 +83,7 @@ let
       net-snmp
     ];
 
-    # Phase 3 : analyse web
+    # Phase 3: web analysis
     web = with pkgs; [
       gobuster
       ffuf
@@ -95,15 +94,15 @@ let
       firefoxCustom
     ];
 
-    # Phase 4 : exploitation
+    # Phase 4: exploitation
     exploitation = with pkgs; [
       metasploit
       exploitdb
       netexec
     ];
 
-    # Phase 5 : attaques de mots de passe
-    # thc-hydra : `hydra` de nixpkgs désigne Hydra, le CI de Nix.
+    # Phase 5: password attacks
+    # thc-hydra: `hydra` in nixpkgs refers to Nix CI, not THC-Hydra.
     passwords = with pkgs; [
       john
       hashcat
@@ -111,13 +110,13 @@ let
       hashid
     ];
 
-    # Phase 6 : post-exploitation et privesc
+    # Phase 6: post-exploitation & privesc
     postexploit = with pkgs; [
       pspy
       chisel
     ];
 
-    # Phase 7 : réseau et sniffing
+    # Phase 7: network & sniffing
     network = with pkgs; [
       wireshark
       tcpdump
@@ -125,7 +124,7 @@ let
       socat
     ];
 
-    # Phase 8 : reverse engineering et pwn
+    # Phase 8: reverse engineering & pwn
     reverse = [
       pkgs.ghidra
       pkgs.radare2
@@ -134,7 +133,7 @@ let
       pythonTools
     ];
 
-    # Phase 9 : forensics et stéganographie
+    # Phase 9: forensics & steganography
     forensics = with pkgs; [
       binwalk
       steghide
@@ -142,14 +141,14 @@ let
       foremost
     ];
 
-    # Phase 10 : utilitaires transversaux
+    # Phase 10: cross-cutting utilities
     utils = with pkgs; [
       coreutils
       gnugrep
       gnused
       gawk
       findutils
-      ncurses # pour clear, tput
+      ncurses # clear, tput
       curl
       wget
       jq
@@ -170,80 +169,61 @@ let
   };
 
   # ──────────────────────────────────────────────
-  # Groupes supplémentaires (profil full uniquement)
+  # Extra groups (full profile only)
   # ──────────────────────────────────────────────
   extraGroups = lib.optionalAttrs isFull {
-    # Phase 1 : reconnaissance étendue
-    # amass : énumération de sous-domaines (actif + passif, large base de sources).
-    # subfinder : découverte rapide de sous-domaines via des sources passives.
+    # Phase 1: extended recon
     recon-extra = with pkgs; [
-      amass
-      subfinder
+      amass       # subdomain enumeration (active + passive)
+      subfinder   # fast passive subdomain discovery
     ];
 
-    # Phase 2 : scan avancé
-    # rustscan : scanner de ports ultra-rapide, passe le relais à nmap pour le détail.
-    scanning-extra = with pkgs; [ rustscan ];
+    # Phase 2: advanced scanning
+    scanning-extra = with pkgs; [
+      rustscan    # ultra-fast port scanner, hands off to nmap
+    ];
 
-    # Phase 3 : analyse web avancée
-    # feroxbuster : brute-force récursif de répertoires (Rust, rapide).
-    # nuclei : scanner de vulnérabilités basé sur des templates YAML.
-    # wpscan : scanner dédié WordPress (thèmes, plugins, utilisateurs).
-    # zap : proxy d'interception alternatif à Burp Suite (OWASP, open source).
+    # Phase 3: advanced web analysis
     web-extra = with pkgs; [
-      feroxbuster
-      nuclei
-      wpscan
-      zap
+      feroxbuster # recursive directory brute-forcing (Rust)
+      nuclei      # template-based vulnerability scanner
+      wpscan      # WordPress scanner
+      zap         # OWASP ZAP intercepting proxy
       jdk17
     ];
 
-    # Phase 5 : mots de passe avancés
-    # crunch : générateur de wordlists personnalisées (patterns, charsets).
-    # hcxtools : capture et conversion de handshakes Wi-Fi (WPA/WPA2).
+    # Phase 5: advanced password attacks
     passwords-extra = with pkgs; [
-      crunch
-      hcxtools
+      crunch      # custom wordlist generator
+      hcxtools    # Wi-Fi handshake capture/conversion
     ];
 
-    # Phase 7 : réseau avancé
-    # ettercap : attaques MITM sur LAN (ARP spoofing, sniffing).
-    # ngrep : grep réseau en temps réel sur le trafic (pattern matching).
-    # proxychains-ng : force le trafic d'un programme à passer par des proxys (SOCKS/HTTP).
+    # Phase 7: advanced network
     network-extra = with pkgs; [
-      ettercap
-      ngrep
-      proxychains-ng
+      ettercap       # MITM attacks (ARP spoofing, sniffing)
+      ngrep          # real-time network grep
+      proxychains-ng # force traffic through SOCKS/HTTP proxies
     ];
 
-    # Phase 8 : reverse engineering avancé
-    # rizin : fork de radare2, API modernisée (alternative/complément).
-    # jadx : décompilateur Java/Android (APK → source lisible).
-    # yara : moteur de pattern matching pour la détection de malware et le triage.
+    # Phase 8: advanced reverse engineering
     reverse-extra = with pkgs; [
-      rizin
-      jadx
-      yara
+      rizin  # radare2 fork, modernised API
+      jadx   # Java/Android decompiler (APK → source)
+      yara   # pattern matching for malware detection
     ];
 
-    # Phase 9 : forensics avancé
-    # sleuthkit : analyse de systèmes de fichiers (images disque, partitions).
-    # testdisk : récupération de partitions et fichiers supprimés.
+    # Phase 9: advanced forensics
     forensics-extra = with pkgs; [
-      sleuthkit
-      testdisk
+      sleuthkit  # filesystem analysis (disk images, partitions)
+      testdisk   # partition and file recovery
     ];
 
-    # Phase 10 : utilitaires supplémentaires
-    # rlwrap : readline wrapper pour les programmes sans historique (nc, etc.).
-    # p7zip : compression/décompression 7z et formats variés.
-    # unzip : extraction d'archives ZIP.
-    # dos2unix : conversion de fins de ligne (utile pour les fichiers transférés).
+    # Phase 10: extra utilities
     utils-extra = with pkgs; [
-      rlwrap
-      p7zip
-      unzip
-      dos2unix
+      rlwrap    # readline wrapper for programs without history
+      p7zip     # 7z compression/decompression
+      unzip     # ZIP extraction
+      dos2unix  # line ending conversion
     ];
   };
 
@@ -252,6 +232,6 @@ let
 in
 {
   inherit groups extraGroups;
-  # Filtre les paquets dont la plateforme n'est pas supportée (ex. burpsuite sur aarch64).
+  # Filter out packages unsupported on the current platform (e.g. burpsuite on aarch64).
   packages = lib.filter (p: lib.meta.availableOn pkgs.stdenv.hostPlatform p) allPackages;
 }

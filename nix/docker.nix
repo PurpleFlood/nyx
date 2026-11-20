@@ -1,10 +1,10 @@
-# Construit une image Docker déterministe avec les outils de pentest.
-# Deux profils : light (~7 Go d'outils) et full (~20-30 Go).
-# L'image est construite avec dockerTools.buildLayeredImage (pas de base image).
+# Deterministic Docker image with pentest tools.
+# Two profiles: light (~7 GiB) and full (~20-30 GiB).
+# Built with dockerTools.buildLayeredImage (no base image).
 #
-# Construction : nix build .#docker-light  ou  nix build .#docker-full
-# Chargement :   docker load < result
-# Résultat :     image "nyx:light" ou "nyx:full" dans Docker
+# Build: nix build .#docker-light  or  nix build .#docker-full
+# Load:  docker load < result
+# Result: image "nyx:light" or "nyx:full"
 {
   pkgs,
   pwndbg,
@@ -16,7 +16,7 @@ let
 
   profileTag = if profile == "full" then "FULL" else "LIGHT";
 
-  # ── RC file : prompt, aliases, fonctions utilitaires ────────────────
+  # ── RC file: prompt, aliases, utility functions ────────────────────
   rcFile = pkgs.writeText "nyx-rc" ''
     # shellcheck disable=all
     if [[ "''${NYX_VPN:-0}" == "1" ]]; then
@@ -36,14 +36,14 @@ let
 
     listen() {
       if [[ -z "''${1:-}" ]]; then
-        echo "usage : listen <port>" >&2
+        echo "usage: listen <port>" >&2
         return 1
       fi
       nc -lvnp "$1"
     }
   '';
 
-  # ── Configuration tmux ─────────────────────────────────────────────
+  # ── Tmux config ────────────────────────────────────────────────────
   tmuxConf = pkgs.writeText "nyx-tmux.conf" ''
     set -g mouse on
     set -g history-limit 50000
@@ -53,7 +53,7 @@ let
     set -g default-terminal "tmux-256color"
   '';
 
-  # ── Entrypoint : prépare le workspace, lance le VPN, reste actif ──
+  # ── Entrypoint: prepare workspace, start VPN, stay alive ───────────
   entrypoint = pkgs.writeShellApplication {
     name = "nyx-entrypoint";
     runtimeInputs = with pkgs; [
@@ -65,7 +65,7 @@ let
     text = builtins.readFile ../scripts/nyx-entrypoint.sh;
   };
 
-  # ── fetch-wordlists : télécharge rockyou, SecLists, linpeas ────────
+  # ── fetch-wordlists: download rockyou, SecLists, linpeas ───────────
   fetchWordlists = pkgs.writeShellApplication {
     name = "fetch-wordlists";
     runtimeInputs = with pkgs; [
@@ -78,7 +78,7 @@ let
     text = builtins.readFile ../scripts/fetch-wordlists.sh;
   };
 
-  # Tous les paquets de l'image
+  # All image packages
   allPackages = tools.packages ++ [
     entrypoint
     fetchWordlists
@@ -93,11 +93,11 @@ pkgs.dockerTools.buildLayeredImage {
 
   contents = allPackages ++ [
     pkgs.dockerTools.fakeNss # /etc/passwd, /etc/group (root, nobody)
-    pkgs.bashInteractive # bash interactif avec readline
-    pkgs.cacert # certificats CA pour curl/wget/git
+    pkgs.bashInteractive # interactive bash with readline
+    pkgs.cacert # CA certificates for curl/wget/git
   ];
 
-  # Répertoires et fichiers de configuration
+  # Directories and config files
   extraCommands = ''
     mkdir -p etc tmp workspace root
     chmod 1777 tmp

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Entrypoint du conteneur nyx : prépare le workspace, démarre le VPN si configuré,
-# puis reste actif pour accepter des shells via `docker exec`.
+# Nyx container entrypoint: prepare workspace, start VPN if configured,
+# then stay alive to accept shells via `docker exec`.
 set -euo pipefail
 
 profile="${NYX_PROFILE:-light}"
@@ -17,14 +17,14 @@ if [[ ! -f "/workspace/notes/notes.md" ]]; then
   cat > /workspace/notes/notes.md <<EOF
 # $name
 
-- Date : $(date +%F)
-- Profil : $profile
+- Date: $(date +%F)
+- Profile: $profile
 
 ## Reconnaissance
 
-## Accès initial
+## Initial access
 
-## Escalade de privilèges
+## Privilege escalation
 
 ## Flags
 EOF
@@ -32,7 +32,7 @@ fi
 
 # ── VPN ──────────────────────────────────────────────────────────────────
 if [[ "${NYX_VPN:-0}" == "1" ]] && [[ -f "/vpn/config.ovpn" ]]; then
-  printf '[nyx] connexion VPN en cours...\n'
+  printf '[nyx] connecting VPN...\n'
   openvpn --config /vpn/config.ovpn --daemon nyx-vpn \
     --writepid /tmp/openvpn.pid --log /tmp/openvpn.log --verb 3
 
@@ -40,12 +40,12 @@ if [[ "${NYX_VPN:-0}" == "1" ]] && [[ -f "/vpn/config.ovpn" ]]; then
   vpn_wait=60
   while [[ $vpn_wait -gt 0 ]]; do
     if grep -q 'Initialization Sequence Completed' /tmp/openvpn.log 2>/dev/null; then
-      printf '[nyx] VPN connecté\n'
+      printf '[nyx] VPN connected\n'
       connected=1
       break
     fi
     if grep -qE 'AUTH_FAILED|Exiting due to fatal error|Options error' /tmp/openvpn.log 2>/dev/null; then
-      printf '[nyx] erreur VPN :\n' >&2
+      printf '[nyx] VPN error:\n' >&2
       tail -5 /tmp/openvpn.log >&2
       break
     fi
@@ -53,27 +53,27 @@ if [[ "${NYX_VPN:-0}" == "1" ]] && [[ -f "/vpn/config.ovpn" ]]; then
     sleep 1
   done
   if [[ $connected -eq 0 ]]; then
-    printf '[nyx] avertissement : VPN non connecté après 60s\n' >&2
+    printf '[nyx] warning: VPN not connected after 60s\n' >&2
   fi
 fi
 
-# ── Bannière ─────────────────────────────────────────────────────────────
+# ── Banner ───────────────────────────────────────────────────────────────
 tag="LIGHT"
 if [[ "$profile" == "full" ]]; then
   tag="FULL"
 fi
-vpn_info="non"
+vpn_info="no"
 if [[ "${NYX_VPN:-0}" == "1" ]]; then
-  vpn_info="oui"
+  vpn_info="yes"
 fi
 
 printf '+--------------------------------------------------+\n'
-printf '|   NYX  -  environnement pentest isolé (Nix)      |\n'
-printf '|   Profil : %-39s|\n' "$tag"
+printf '|   NYX  -  isolated pentest environment (Nix)     |\n'
+printf '|   Profile: %-38s|\n' "$tag"
 printf '+--------------------------------------------------+\n'
 printf '  Workspace : %s\n' "$name"
 printf '  VPN       : %s\n' "$vpn_info"
 printf '\n'
 
-# Reste actif (les shells sont ouverts via `docker exec`)
+# Stay alive (shells are opened via `docker exec`)
 exec sleep infinity

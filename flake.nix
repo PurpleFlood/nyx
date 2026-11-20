@@ -1,23 +1,23 @@
 {
-  # Environnement pentest/CTF isolé via conteneurs Docker/Podman.
+  # Isolated pentest/CTF environment via Docker/Podman containers.
   #
-  # Usage principal (conteneurisé) :
-  #   nix develop          → shell minimal avec uniquement la commande nyx
-  #   nyx install           → construit et charge l'image light
-  #   nyx start <nom>       → lance un workspace conteneurisé
+  # Main usage (containerised):
+  #   nix develop          → minimal shell with only the nyx command
+  #   nyx install           → build and load the light image
+  #   nyx start <name>      → start a containerised workspace
   #
-  # Usage alternatif (sans conteneur) :
-  #   nix develop .#light  → devShell complet profil light (~7 Go)
-  #   nix develop .#full   → devShell complet profil full  (~20-30 Go)
+  # Alternative usage (no container):
+  #   nix develop .#light  → full devShell, light profile (~7 GiB)
+  #   nix develop .#full   → full devShell, full profile  (~20-30 GiB)
   #
-  # Construction directe des images :
-  #   nix build .#docker-light  → image Docker "nyx:light"
-  #   nix build .#docker-full   → image Docker "nyx:full"
-  description = "Environnement pentest/CTF isolé";
+  # Direct image builds:
+  #   nix build .#docker-light  → Docker image "nyx:light"
+  #   nix build .#docker-full   → Docker image "nyx:full"
+  description = "Isolated pentest/CTF environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # pwndbg n'est pas dans nixpkgs : on consomme son flake officiel.
+    # pwndbg is not in nixpkgs: consumed via its official flake.
     pwndbg = {
       url = "github:pwndbg/pwndbg";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -52,7 +52,7 @@
           pkgs = pkgsFor system;
           nyx = import ./nix/nyx.nix { inherit pkgs; };
 
-          # Shell minimal : uniquement la commande nyx (rapide à construire)
+          # Minimal shell: only the nyx command (fast to build)
           minimalShell = pkgs.mkShell {
             packages = [ nyx ];
             shellHook = ''
@@ -63,7 +63,7 @@
             '';
           };
 
-          # Shells complets : tous les outils pentest (approche sans conteneur)
+          # Full shells: all pentest tools (container-free approach)
           mkPentestShell =
             profile:
             let
@@ -79,9 +79,9 @@
             };
         in
         {
-          # nix develop         → shell minimal avec nyx uniquement
-          # nix develop .#light → devShell complet profil light (sans conteneur)
-          # nix develop .#full  → devShell complet profil full (sans conteneur)
+          # nix develop         → minimal shell with nyx only
+          # nix develop .#light → full devShell, light profile (no container)
+          # nix develop .#full  → full devShell, full profile (no container)
           default = minimalShell;
           light = mkPentestShell "light";
           full = mkPentestShell "full";
@@ -95,11 +95,11 @@
           pkgs = pkgsFor system;
         in
         {
-          # CLI nyx : gestionnaire de workspaces conteneurisés
+          # nyx CLI: containerised workspace manager
           nyx = import ./nix/nyx.nix { inherit pkgs; };
 
-          # Images Docker construites avec Nix (déterministes)
-          # Usage : nix build .#docker-light && docker load < result
+          # Deterministic Docker images built with Nix
+          # Usage: nix build .#docker-light && docker load < result
           docker-light = import ./nix/docker.nix {
             inherit pkgs pwndbg;
             profile = "light";

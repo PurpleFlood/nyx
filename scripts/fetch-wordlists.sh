@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Télécharge les wordlists et outils non packagés dans wordlists/ et tools/.
-# Usage : fetch-wordlists.sh <minimal|full>
-#   minimal : rockyou.txt.gz uniquement (~15 Mo)
-#   full    : rockyou + collection SecLists complète (~1 Go+)
-# linpeas est téléchargé dans les deux modes (absent de nixpkgs).
+# Downloads wordlists and unpackaged tools into wordlists/ and tools/.
+# Usage: fetch-wordlists.sh <minimal|full>
+#   minimal: rockyou.txt.gz only (~15 MB)
+#   full:    rockyou + full SecLists collection (~1 GB+)
+# linpeas is downloaded in both modes (not in nixpkgs).
 set -euo pipefail
 
 mode="${1:-}"
 if [[ "$mode" != "minimal" && "$mode" != "full" ]]; then
-  echo "Usage : fetch-wordlists.sh <minimal|full>" >&2
+  echo "Usage: fetch-wordlists.sh <minimal|full>" >&2
   exit 1
 fi
 
@@ -24,10 +24,10 @@ linpeas_url="https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpe
 fetch() {
   local url="$1" dest="$2"
   if [[ -s "$dest" ]]; then
-    echo "déjà présent : $dest"
+    echo "already present: $dest"
     return 0
   fi
-  echo "téléchargement : $url"
+  echo "downloading: $url"
   curl -fL --retry 3 -o "$dest.part" "$url"
   mv "$dest.part" "$dest"
 }
@@ -43,7 +43,7 @@ chmod +x "$tools_dir/linpeas.sh"
 if [[ "$mode" == "full" ]]; then
   seclists_dir="$wordlists_dir/SecLists"
   if [[ -d "$seclists_dir" ]]; then
-    echo "SecLists déjà présent : $seclists_dir"
+    echo "SecLists already present: $seclists_dir"
   else
     tmp_tar="$(mktemp "$wordlists_dir/seclists.XXXXXX.tar.gz")"
     trap 'rm -f "$tmp_tar"' EXIT
@@ -53,4 +53,4 @@ if [[ "$mode" == "full" ]]; then
   fi
 fi
 
-echo "terminé (mode $mode) : $wordlists_dir"
+echo "done ($mode mode): $wordlists_dir"

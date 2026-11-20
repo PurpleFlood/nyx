@@ -1,6 +1,6 @@
-# Empaquette le CLI nyx avec ses dépendances.
-# nyx orchestre les conteneurs Docker (start/stop/list/rm).
-# Docker doit être installé sur le système hôte.
+# Packages the nyx CLI with its dependencies.
+# nyx manages containerised pentest workspaces (start/stop/list/rm).
+# A container runtime (Docker/Podman) must be installed on the host.
 { pkgs }:
 pkgs.writeShellApplication {
   name = "nyx";
