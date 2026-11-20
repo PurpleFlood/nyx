@@ -115,6 +115,7 @@ pkgs.dockerTools.buildLayeredImage {
       "NYX_TMUX_CONF=/etc/nyx-tmux.conf"
       "HOME=/root"
       "NYX_PROFILE=${profile}"
+      "_JAVA_AWT_WM_NONREPARENTING=1"
       "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       "PENTEST_WORDLISTS=/workspace/wordlists"
       "PENTEST_WORKSPACE=/workspace"

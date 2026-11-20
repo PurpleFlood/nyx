@@ -25,11 +25,26 @@ let
   # L'extension est automatiquement téléchargée et activée au premier lancement.
   firefoxWithUblock = pkgs.wrapFirefox pkgs.firefox-unwrapped {
     extraPolicies = {
+      # Extensions
       ExtensionSettings = {
+        # uBlock Origin
         "uBlock0@raymondhill.net" = {
           installation_mode = "force_installed";
           install_url = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi";
         };
+        # FoxyProxy Standard
+        "foxyproxy@eric.h.jung" = {
+          installation_mode = "force_installed";
+          install_url = "https://addons.mozilla.org/firefox/downloads/latest/foxyproxy-standard/latest.xpi";
+        };
+      };
+      # Pas d'écran de bienvenue / config au premier lancement
+      OverrideFirstRunPage = "";
+      OverridePostUpdatePage = "";
+      DontCheckDefaultBrowser = true;
+      # Thème dark
+      Preferences = {
+        "extensions.activeThemeID" = "firefox-compact-dark@mozilla.org";
       };
     };
   };
@@ -77,7 +92,7 @@ let
       burpsuite
       sqlmap
       whatweb
-      firefoxWithUblock
+      firefoxCustom
     ];
 
     # Phase 4 : exploitation
@@ -148,6 +163,9 @@ let
       iproute2
       iptables
       util-linux
+      zsh
+      zsh-autosuggestions
+      zsh-syntax-highlighting
     ];
   };
 
