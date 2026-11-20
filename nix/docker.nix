@@ -5,7 +5,11 @@
 # Construction : nix build .#docker-light  ou  nix build .#docker-full
 # Chargement :   docker load < result
 # Résultat :     image "nyx:light" ou "nyx:full" dans Docker
-{ pkgs, pwndbg, profile ? "light" }:
+{
+  pkgs,
+  pwndbg,
+  profile ? "light",
+}:
 let
   lib = pkgs.lib;
   tools = import ./tools.nix { inherit pkgs pwndbg profile; };
@@ -52,19 +56,33 @@ let
   # ── Entrypoint : prépare le workspace, lance le VPN, reste actif ──
   entrypoint = pkgs.writeShellApplication {
     name = "nyx-entrypoint";
-    runtimeInputs = with pkgs; [ coreutils openvpn gnugrep bashInteractive ];
+    runtimeInputs = with pkgs; [
+      coreutils
+      openvpn
+      gnugrep
+      bashInteractive
+    ];
     text = builtins.readFile ../scripts/nyx-entrypoint.sh;
   };
 
   # ── fetch-wordlists : télécharge rockyou, SecLists, linpeas ────────
   fetchWordlists = pkgs.writeShellApplication {
     name = "fetch-wordlists";
-    runtimeInputs = with pkgs; [ coreutils curl gzip gnutar git ];
+    runtimeInputs = with pkgs; [
+      coreutils
+      curl
+      gzip
+      gnutar
+      git
+    ];
     text = builtins.readFile ../scripts/fetch-wordlists.sh;
   };
 
   # Tous les paquets de l'image
-  allPackages = tools.packages ++ [ entrypoint fetchWordlists ];
+  allPackages = tools.packages ++ [
+    entrypoint
+    fetchWordlists
+  ];
   toolsPath = lib.makeBinPath allPackages;
 
 in
@@ -74,9 +92,9 @@ pkgs.dockerTools.buildLayeredImage {
   maxLayers = 120;
 
   contents = allPackages ++ [
-    pkgs.dockerTools.fakeNss      # /etc/passwd, /etc/group (root, nobody)
-    pkgs.bashInteractive          # bash interactif avec readline
-    pkgs.cacert                   # certificats CA pour curl/wget/git
+    pkgs.dockerTools.fakeNss # /etc/passwd, /etc/group (root, nobody)
+    pkgs.bashInteractive # bash interactif avec readline
+    pkgs.cacert # certificats CA pour curl/wget/git
   ];
 
   # Répertoires et fichiers de configuration
@@ -102,7 +120,7 @@ pkgs.dockerTools.buildLayeredImage {
       "PENTEST_WORKSPACE=/workspace"
     ];
     Volumes = {
-      "/workspace" = {};
+      "/workspace" = { };
     };
   };
 }

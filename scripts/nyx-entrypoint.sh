@@ -6,6 +6,8 @@ set -euo pipefail
 profile="${NYX_PROFILE:-light}"
 name="${NYX_NAME:-workspace}"
 
+ln -sf /etc/ssl/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt
+
 # ── Workspace ────────────────────────────────────────────────────────────
 for d in scans exploits loot notes; do
   mkdir -p "/workspace/$d"
