@@ -392,7 +392,7 @@ cmd_update() {
   info "loading image into $CTR..."
   "$CTR" load < "$NYX_BUILD_DIR/result"
 
-  [ -n "$remote_rev" ]] && save_rev "$profile" "$remote_rev"
+  [[ -n "$remote_rev" ]] && save_rev "$profile" "$remote_rev"
 
   info "image '$image' updated successfully"
 
