@@ -24,18 +24,30 @@
     };
   };
 
-  outputs = { self, nixpkgs, pwndbg, ... }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      pwndbg,
+      ...
+    }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
-      pkgsFor = system: import nixpkgs {
-        inherit system;
-        config.allowUnfree = true;
-      };
+      pkgsFor =
+        system:
+        import nixpkgs {
+          inherit system;
+          config.allowUnfree = true;
+        };
     in
     {
       # ── DevShells ─────────────────────────────────────────────────────
-      devShells = forAllSystems (system:
+      devShells = forAllSystems (
+        system:
         let
           pkgs = pkgsFor system;
           nyx = import ./nix/nyx.nix { inherit pkgs; };
@@ -52,7 +64,8 @@
           };
 
           # Shells complets : tous les outils pentest (approche sans conteneur)
-          mkPentestShell = profile:
+          mkPentestShell =
+            profile:
             let
               tools = import ./nix/tools.nix { inherit pkgs pwndbg profile; };
               hook = import ./nix/shell-hook.nix {
@@ -72,10 +85,12 @@
           default = minimalShell;
           light = mkPentestShell "light";
           full = mkPentestShell "full";
-        });
+        }
+      );
 
       # ── Packages ────────────────────────────────────────────────────
-      packages = forAllSystems (system:
+      packages = forAllSystems (
+        system:
         let
           pkgs = pkgsFor system;
         in
@@ -93,6 +108,7 @@
             inherit pkgs pwndbg;
             profile = "full";
           };
-        });
+        }
+      );
     };
 }

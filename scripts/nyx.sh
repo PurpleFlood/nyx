@@ -292,12 +292,50 @@ cmd_uninstall() {
 }
 
 cmd_update() {
-  local profile="${1:-$NYX_DEFAULT_PROFILE}"
+  local profile="${1:-}"
+
+  check_nix
+
+  # Si pas de profil spécifié → update toutes les images installées
+  if [[ -z "$profile" ]]; then
+    local installed=()
+    for p in light full; do
+      if image_exists "$NYX_IMAGE_PREFIX:$p"; then
+        installed+=("$p")
+      fi
+    done
+
+    if [[ ${#installed[@]} -eq 0 ]]; then
+      info "aucune image installée, rien à mettre à jour"
+      return
+    fi
+
+    info "images installées : ${installed[*]}"
+    printf '  Mettre à jour toutes les images ? [O/n] '
+    read -r answer
+    if [[ "$answer" == "n" || "$answer" == "N" ]]; then
+      return
+    fi
+
+    for p in "${installed[@]}"; do
+      cmd_update "$p"
+    done
+    return
+  fi
 
   if [[ "$profile" != "light" && "$profile" != "full" ]]; then
     err "profil invalide : '$profile' (light ou full)"
     exit 1
   fi
+
+  local image="$NYX_IMAGE_PREFIX:$profile"
+
+  if ! image_exists "$image"; then
+    err "image '$image' non installée, utilisez 'nyx install $profile'"
+    exit 1
+  fi
+
+  info "mise à jour de l'image '$image'..."
 
   check_nix
 
