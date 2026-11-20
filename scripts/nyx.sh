@@ -198,6 +198,27 @@ detect_flake_ref() {
   fi
 }
 
+# Get the latest rev of the remote flake. Returns empty string if offline/error.
+get_flake_rev() {
+  local flake_ref="$1"
+  nix flake metadata "$flake_ref" --json 2>/dev/null | grep -o '"revision":"[^"]*"' | cut -d'"' -f4 || true
+}
+
+# Get the stored rev from last build for a profile.
+get_stored_rev() {
+  local profile="$1"
+  local rev_file="$NYX_BUILD_DIR/last-rev-$profile"
+  [[ -f "$rev_file" ]] && cat "$rev_file" || true
+}
+
+# Save rev after a successful build.
+save_rev() {
+  local profile="$1"
+  local rev="$2"
+  mkdir -p "$NYX_BUILD_DIR"
+  printf '%s' "$rev" > "$NYX_BUILD_DIR/last-rev-$profile"
+}
+
 # ── Commands: images ───────────────────────────────────────────────────
 
 cmd_install() {
@@ -238,6 +259,10 @@ cmd_install() {
 
   info "loading image into $CTR..."
   "$CTR" load < "$NYX_BUILD_DIR/result"
+
+    local rev
+  rev=$(get_flake_rev "$flake_ref")
+  [[ -n "$rev" ]] && save_rev "$profile" "$rev"
 
   info "image '$image' installed successfully"
 }
@@ -334,22 +359,26 @@ cmd_update() {
     exit 1
   fi
 
-  info "updating image '$image'..."
-
-  check_nix
-
-  local image="$NYX_IMAGE_PREFIX:$profile"
-
-  if ! image_exists "$image"; then
-    info "image '$image' not installed, installing..."
-  else
-    info "updating image '$image'..."
-  fi
-
   local flake_ref
   flake_ref=$(detect_flake_ref)
+
+  # Check if update is needed by comparing flake revisions
+  local remote_rev stored_rev
+  remote_rev=$(get_flake_rev "$flake_ref")
+  stored_rev=$(get_stored_rev "$profile")
+
+  if [[ -n "$remote_rev" && "$remote_rev" == "$stored_rev" ]]; then
+    info "image '$image' is already up to date (rev: ${remote_rev:0:8})"
+    return
+  fi
+
+  if [[ -z "$remote_rev" ]]; then
+    warn "could not check remote version (offline?), rebuilding anyway..."
+  fi
+
+  info "updating image '$image'..."
   info "source: $flake_ref"
-  info "this may take several minutes..."
+  info "this may take several minutes..." 
 
   mkdir -p "$NYX_BUILD_DIR"
 
@@ -362,6 +391,8 @@ cmd_update() {
 
   info "loading image into $CTR..."
   "$CTR" load < "$NYX_BUILD_DIR/result"
+
+  [ -n "$remote_rev" ]] && save_rev "$profile" "$remote_rev"
 
   info "image '$image' updated successfully"
 
@@ -459,6 +490,17 @@ cmd_start() {
   local container="nyx-$name"
   local workspace="$NYX_WORKSPACE/$name"
   local image="$NYX_IMAGE_PREFIX:$profile"
+
+  # Check for remote update (silent, non-blocking)
+  if command -v nix &>/dev/null; then
+    local flake_ref stored_rev remote_rev
+    flake_ref=$(detect_flake_ref)
+    stored_rev=$(get_stored_rev "$profile")
+    remote_rev=$(get_flake_rev "$flake_ref")
+    if [[ -n "$remote_rev" && -n "$stored_rev" && "$remote_rev" != "$stored_rev" ]]; then
+      warn "a new version is available, run 'nyx update' to update"
+    fi
+  fi
 
   # Container already running → attach
   if container_running "$container"; then
