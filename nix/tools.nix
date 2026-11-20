@@ -23,7 +23,7 @@ let
 
   # Firefox avec uBlock Origin installé via les enterprise policies.
   # L'extension est automatiquement téléchargée et activée au premier lancement.
-  firefoxWithUblock = pkgs.wrapFirefox pkgs.firefox-unwrapped {
+  firefoxCustom = pkgs.wrapFirefox pkgs.firefox-unwrapped {
     extraPolicies = {
       # Extensions
       ExtensionSettings = {
