@@ -122,6 +122,7 @@ let
       tcpdump
       netcat-gnu
       socat
+      iputils
     ];
 
     # Phase 8: reverse engineering & pwn
@@ -174,56 +175,56 @@ let
   extraGroups = lib.optionalAttrs isFull {
     # Phase 1: extended recon
     recon-extra = with pkgs; [
-      amass       # subdomain enumeration (active + passive)
-      subfinder   # fast passive subdomain discovery
+      amass # subdomain enumeration (active + passive)
+      subfinder # fast passive subdomain discovery
     ];
 
     # Phase 2: advanced scanning
     scanning-extra = with pkgs; [
-      rustscan    # ultra-fast port scanner, hands off to nmap
+      rustscan # ultra-fast port scanner, hands off to nmap
     ];
 
     # Phase 3: advanced web analysis
     web-extra = with pkgs; [
       feroxbuster # recursive directory brute-forcing (Rust)
-      nuclei      # template-based vulnerability scanner
-      wpscan      # WordPress scanner
-      zap         # OWASP ZAP intercepting proxy
+      nuclei # template-based vulnerability scanner
+      wpscan # WordPress scanner
+      zap # OWASP ZAP intercepting proxy
       jdk17
     ];
 
     # Phase 5: advanced password attacks
     passwords-extra = with pkgs; [
-      crunch      # custom wordlist generator
-      hcxtools    # Wi-Fi handshake capture/conversion
+      crunch # custom wordlist generator
+      hcxtools # Wi-Fi handshake capture/conversion
     ];
 
     # Phase 7: advanced network
     network-extra = with pkgs; [
-      ettercap       # MITM attacks (ARP spoofing, sniffing)
-      ngrep          # real-time network grep
+      ettercap # MITM attacks (ARP spoofing, sniffing)
+      ngrep # real-time network grep
       proxychains-ng # force traffic through SOCKS/HTTP proxies
     ];
 
     # Phase 8: advanced reverse engineering
     reverse-extra = with pkgs; [
-      rizin  # radare2 fork, modernised API
-      jadx   # Java/Android decompiler (APK → source)
-      yara   # pattern matching for malware detection
+      rizin # radare2 fork, modernised API
+      jadx # Java/Android decompiler (APK → source)
+      yara # pattern matching for malware detection
     ];
 
     # Phase 9: advanced forensics
     forensics-extra = with pkgs; [
-      sleuthkit  # filesystem analysis (disk images, partitions)
-      testdisk   # partition and file recovery
+      sleuthkit # filesystem analysis (disk images, partitions)
+      testdisk # partition and file recovery
     ];
 
     # Phase 10: extra utilities
     utils-extra = with pkgs; [
-      rlwrap    # readline wrapper for programs without history
-      p7zip     # 7z compression/decompression
-      unzip     # ZIP extraction
-      dos2unix  # line ending conversion
+      rlwrap # readline wrapper for programs without history
+      p7zip # 7z compression/decompression
+      unzip # ZIP extraction
+      dos2unix # line ending conversion
     ];
   };
 
