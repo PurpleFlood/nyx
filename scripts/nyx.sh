@@ -8,6 +8,7 @@ set -euo pipefail
 readonly NYX_WORKSPACE="${NYX_WORKSPACE:-$HOME/nyx-workspace}"
 readonly NYX_IMAGE_PREFIX="nyx"
 readonly NYX_DEFAULT_PROFILE="light"
+readonly NYX_VALID_PROFILES="light web hardware wireless dev full"
 readonly NYX_FLAKE="${NYX_FLAKE:-github:PurpleFlood/pentest-env/nix-container}"
 readonly NYX_BUILD_DIR="${NYX_BUILD_DIR:-$HOME/.nyx/build}"
 
@@ -43,13 +44,14 @@ usage() {
   cat <<EOF
 Usage: nyx <command>
 
-  install [light|full]    Build and load an image (default: light)
-  uninstall [light|full]  Remove an image
-  update [light|full]     Update an image (rebuild from flake)
+  install [profiles]      Build and load an image (default: light)
+                          Profiles : light, web, hardware, wireless, dev, full
+  uninstall [profiles]    Remove an image
+  update [profiles]       Update an image (rebuild from flake)
   images                  List installed nyx images
 
   start <name> [options]  Start a workspace (creates it if needed)
-    --profile full|light  Tool profile (default: light)
+    --profile <name>      Tool profile (default: light)
     --vpn <file.ovpn>     Connect VPN automatically
 
   stop <name>             Stop a workspace
@@ -191,7 +193,7 @@ create_container() {
 detect_flake_ref() {
   local flake_dir
   flake_dir=$(pwd)
-  if [[ -f "$flake_dir/flake.nix" ]] && grep -q 'docker-light\|docker-full' "$flake_dir/flake.nix" 2>/dev/null; then
+  if [[ -f "$flake_dir/flake.nix" ]] && grep -q 'docker-light\|docker-full\|docker-web\|docker-hardware\|docker-wireless\|docker-dev' "$flake_dir/flake.nix" 2>/dev/null; then
     printf '%s' "$flake_dir"
   else
     printf '%s' "$NYX_FLAKE"
@@ -224,9 +226,9 @@ save_rev() {
 cmd_install() {
   local profile="${1:-$NYX_DEFAULT_PROFILE}"
 
-  if [[ "$profile" != "light" && "$profile" != "full" ]]; then
-    err "invalid profile: '$profile' (light or full)"
-    exit 1
+  if [[ ! " $NYX_VALID_PROFILES " =~ " $profile " ]]; then
+  err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
+  exit 1
   fi
 
   check_nix
@@ -273,7 +275,7 @@ cmd_uninstall() {
   if [[ -z "$profile" ]]; then
     info "installed nyx images:"
     local found=0
-    for p in light full; do
+    for p in $NYX_VALID_PROFILES; do
       if image_exists "$NYX_IMAGE_PREFIX:$p"; then
         info "  - nyx:$p"
         found=1
@@ -347,9 +349,9 @@ cmd_update() {
     return
   fi
 
-  if [[ "$profile" != "light" && "$profile" != "full" ]]; then
-    err "invalid profile: '$profile' (light or full)"
-    exit 1
+  if [[ ! " $NYX_VALID_PROFILES " =~ " $profile " ]]; then
+  err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
+  exit 1
   fi
 
   local image="$NYX_IMAGE_PREFIX:$profile"
@@ -425,7 +427,7 @@ cmd_images() {
   printf '%-15s %-12s %-15s\n' "IMAGE" "SIZE" "STATUS"
   printf '%-15s %-12s %-15s\n' "-----" "----" "------"
 
-  for profile in light full; do
+  for profile in $NYX_VALID_PROFILES; do
     local image="$NYX_IMAGE_PREFIX:$profile"
     local state="not installed"
     local size="-"
@@ -482,9 +484,9 @@ cmd_start() {
     esac
   done
 
-  if [[ "$profile" != "light" && "$profile" != "full" ]]; then
-    err "invalid profile: '$profile' (light or full)"
-    exit 1
+  if [[ ! " $NYX_VALID_PROFILES " =~ " $profile " ]]; then
+  err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
+  exit 1
   fi
 
   local container="nyx-$name"
@@ -611,9 +613,9 @@ cmd_restart() {
     esac
   done
 
-  if [[ -n "$new_profile" && "$new_profile" != "light" && "$new_profile" != "full" ]]; then
-    err "invalid profile: '$new_profile' (light or full)"
-    exit 1
+  if [[ ! " $NYX_VALID_PROFILES " =~ " $profile " ]]; then
+  err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
+  exit 1
   fi
 
   if ! container_exists "$container"; then

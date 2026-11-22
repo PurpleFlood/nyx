@@ -84,6 +84,10 @@
           # nix develop .#full  → full devShell, full profile (no container)
           default = minimalShell;
           light = mkPentestShell "light";
+          web = mkPentestShell "web";
+          hardware = mkPentestShell "hardware";
+          wireless = mkPentestShell "wireless";
+          dev = mkPentestShell "dev";
           full = mkPentestShell "full";
         }
       );
@@ -107,6 +111,22 @@
           docker-full = import ./nix/docker.nix {
             inherit pkgs pwndbg;
             profile = "full";
+          };
+          docker-web = import ./nix/docker.nix {
+            inherit pkgs pwndbg;
+            profile = "web";
+          };
+          docker-hardware = import ./nix/docker.nix {
+            inherit pkgs pwndbg;
+            profile = "hardware";
+          };
+          docker-wireless = import ./nix/docker.nix {
+            inherit pkgs pwndbg;
+            profile = "wireless";
+          };
+          docker-dev = import ./nix/docker.nix {
+            inherit pkgs pwndbg;
+            profile = "dev";
           };
         }
       );
