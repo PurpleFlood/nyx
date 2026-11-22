@@ -226,7 +226,7 @@ save_rev() {
 cmd_install() {
   local profile="${1:-$NYX_DEFAULT_PROFILE}"
 
-  if [[ ! " $NYX_VALID_PROFILES " =~ " $profile " ]]; then
+  if [[ ! " $NYX_VALID_PROFILES " =~ \ $profile\ ]]; then
   err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
   exit 1
   fi
@@ -349,7 +349,7 @@ cmd_update() {
     return
   fi
 
-  if [[ ! " $NYX_VALID_PROFILES " =~ " $profile " ]]; then
+  if [[ ! " $NYX_VALID_PROFILES " =~ \ $profile\ ]]; then
   err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
   exit 1
   fi
@@ -484,7 +484,7 @@ cmd_start() {
     esac
   done
 
-  if [[ ! " $NYX_VALID_PROFILES " =~ " $profile " ]]; then
+  if [[ ! " $NYX_VALID_PROFILES " =~ \ $profile\  ]]; then
   err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
   exit 1
   fi
@@ -613,7 +613,7 @@ cmd_restart() {
     esac
   done
 
-  if [[ ! " $NYX_VALID_PROFILES " =~ " $profile " ]]; then
+  if [[ ! " $NYX_VALID_PROFILES " =~ \ $profile\  ]]; then
   err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
   exit 1
   fi
