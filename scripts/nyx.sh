@@ -44,10 +44,10 @@ usage() {
   cat <<EOF
 Usage: nyx <command>
 
-  install [profiles]      Build and load an image (default: light)
-                          Profiles : light, web, hardware, wireless, dev, full
-  uninstall [profiles]    Remove an image
-  update [profiles]       Update an image (rebuild from flake)
+  install [profile]       Build and load an image (default: light)
+                          Profiles: $NYX_VALID_PROFILES
+  uninstall [profile]     Remove an image
+  update [profile]        Update an image (rebuild from flake)
   images                  List installed nyx images
 
   start <name> [options]  Start a workspace (creates it if needed)
@@ -56,7 +56,7 @@ Usage: nyx <command>
 
   stop <name>             Stop a workspace
   restart <name> [options] Recreate container with latest image
-    --profile full|light  Switch tool profile
+    --profile <name>      Switch tool profile
   list                    List workspaces and their status
   rm <name>               Remove a workspace and its data
 
@@ -97,6 +97,16 @@ validate_name() {
     err "invalid name: '$name' (letters, digits, '.', '_', '-' only)"
     exit 1
   fi
+}
+
+# Check if profile is valid.
+valid_profile() {
+  local p="$1"
+  local valid
+  for valid in $NYX_VALID_PROFILES; do
+    [[ "$valid" == "$p" ]] && return 0
+  done
+  return 1
 }
 
 # ── Container helpers ───────────────────────────────────────────────────
@@ -226,9 +236,9 @@ save_rev() {
 cmd_install() {
   local profile="${1:-$NYX_DEFAULT_PROFILE}"
 
-  if [[ ! " $NYX_VALID_PROFILES " =~ \ $profile\ ]]; then
-  err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
-  exit 1
+  if ! valid_profile "$profile"; then
+    err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
+    exit 1
   fi
 
   check_nix
@@ -262,7 +272,7 @@ cmd_install() {
   info "loading image into $CTR..."
   "$CTR" load < "$NYX_BUILD_DIR/result"
 
-    local rev
+  local rev
   rev=$(get_flake_rev "$flake_ref")
   [[ -n "$rev" ]] && save_rev "$profile" "$rev"
 
@@ -285,12 +295,12 @@ cmd_uninstall() {
       info "  no images installed"
       return
     fi
-    printf '\nProfile to uninstall (light/full): '
+    printf '\nProfile to uninstall: '
     read -r profile
   fi
 
-  if [[ "$profile" != "light" && "$profile" != "full" ]]; then
-    err "invalid profile: '$profile' (light or full)"
+  if ! valid_profile "$profile"; then
+    err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
     exit 1
   fi
 
@@ -325,7 +335,7 @@ cmd_update() {
   # No profile specified → update all installed images
   if [[ -z "$profile" ]]; then
     local installed=()
-    for p in light full; do
+    for p in $NYX_VALID_PROFILES; do
       if image_exists "$NYX_IMAGE_PREFIX:$p"; then
         installed+=("$p")
       fi
@@ -349,9 +359,9 @@ cmd_update() {
     return
   fi
 
-  if [[ ! " $NYX_VALID_PROFILES " =~ \ $profile\ ]]; then
-  err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
-  exit 1
+  if ! valid_profile "$profile"; then
+    err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
+    exit 1
   fi
 
   local image="$NYX_IMAGE_PREFIX:$profile"
@@ -380,7 +390,7 @@ cmd_update() {
 
   info "updating image '$image'..."
   info "source: $flake_ref"
-  info "this may take several minutes..." 
+  info "this may take several minutes..."
 
   mkdir -p "$NYX_BUILD_DIR"
 
@@ -454,7 +464,7 @@ cmd_images() {
 cmd_start() {
   if [[ $# -lt 1 ]]; then
     err "missing workspace name"
-    echo "Usage: nyx start <name> [--profile full|light] [--vpn <file.ovpn>]" >&2
+    echo "Usage: nyx start <name> [--profile <name>] [--vpn <file.ovpn>]" >&2
     exit 1
   fi
 
@@ -468,7 +478,7 @@ cmd_start() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --profile)
-        if [[ $# -lt 2 ]]; then err "--profile requires an argument (light|full)"; exit 1; fi
+        if [[ $# -lt 2 ]]; then err "--profile requires an argument"; exit 1; fi
         profile="$2"
         shift 2
         ;;
@@ -484,9 +494,9 @@ cmd_start() {
     esac
   done
 
-  if [[ ! " $NYX_VALID_PROFILES " =~ \ $profile\  ]]; then
-  err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
-  exit 1
+  if ! valid_profile "$profile"; then
+    err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
+    exit 1
   fi
 
   local container="nyx-$name"
@@ -588,7 +598,7 @@ cmd_stop() {
 cmd_restart() {
   if [[ $# -lt 1 ]]; then
     err "missing workspace name"
-    echo "Usage: nyx restart <name> [--profile full|light]" >&2
+    echo "Usage: nyx restart <name> [--profile <name>]" >&2
     exit 1
   fi
 
@@ -602,7 +612,7 @@ cmd_restart() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --profile)
-        if [[ $# -lt 2 ]]; then err "--profile requires an argument (light|full)"; exit 1; fi
+        if [[ $# -lt 2 ]]; then err "--profile requires an argument"; exit 1; fi
         new_profile="$2"
         shift 2
         ;;
@@ -613,9 +623,9 @@ cmd_restart() {
     esac
   done
 
-  if [[ ! " $NYX_VALID_PROFILES " =~ \ $profile\  ]]; then
-  err "invalid profile: '$profile' (valid: $NYX_VALID_PROFILES)"
-  exit 1
+  if [[ -n "$new_profile" ]] && ! valid_profile "$new_profile"; then
+    err "invalid profile: '$new_profile' (valid: $NYX_VALID_PROFILES)"
+    exit 1
   fi
 
   if ! container_exists "$container"; then
