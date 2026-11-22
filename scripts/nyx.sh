@@ -57,6 +57,7 @@ Usage: nyx <command>
   stop <name>             Stop a workspace
   restart <name> [options] Recreate container with latest image
     --profile <name>      Switch tool profile
+    --vpn <file.ovpn>     Attach or change VPN
   list                    List workspaces and their status
   rm <name>               Remove a workspace and its data
 
@@ -598,7 +599,7 @@ cmd_stop() {
 cmd_restart() {
   if [[ $# -lt 1 ]]; then
     err "missing workspace name"
-    echo "Usage: nyx restart <name> [--profile <name>]" >&2
+    echo "Usage: nyx restart <name> [--profile <name>] [--vpn <file.ovpn>]" >&2
     exit 1
   fi
 
@@ -608,12 +609,18 @@ cmd_restart() {
 
   local container="nyx-$name"
   local new_profile=""
+  local new_vpn=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --profile)
         if [[ $# -lt 2 ]]; then err "--profile requires an argument"; exit 1; fi
         new_profile="$2"
+        shift 2
+        ;;
+      --vpn)
+        if [[ $# -lt 2 ]]; then err "--vpn requires a path to an .ovpn file"; exit 1; fi
+        new_vpn="$2"
         shift 2
         ;;
       *)
@@ -628,6 +635,11 @@ cmd_restart() {
     exit 1
   fi
 
+  if [[ -n "$new_vpn" && ! -r "$new_vpn" ]]; then
+    err "VPN file not found or unreadable: $new_vpn"
+    exit 1
+  fi
+
   if ! container_exists "$container"; then
     err "workspace '$name' not found"
     exit 1
@@ -637,6 +649,11 @@ cmd_restart() {
   local current_profile vpn_path
   current_profile=$(get_container_profile "$container")
   vpn_path=$(get_container_vpn "$container")
+
+  # New VPN overrides the existing one
+  if [[ -n "$new_vpn" ]]; then
+    vpn_path="$new_vpn"
+  fi
 
   local profile="${new_profile:-${current_profile:-$NYX_DEFAULT_PROFILE}}"
   local image="$NYX_IMAGE_PREFIX:$profile"

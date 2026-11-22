@@ -4,7 +4,7 @@
   radare2
   ghidra
   binwalk
-  strings # from binutils
+  binutils
 
   # Cracking
   hashcat

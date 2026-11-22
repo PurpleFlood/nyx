@@ -17,7 +17,7 @@
 
   # Proxy / browser
   firefox # avec tes extensions
-  zaproxy
+  zap
 
   # Misc
   httpie
