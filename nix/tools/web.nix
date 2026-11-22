@@ -15,8 +15,7 @@
   sqlmap
   commix
 
-  # Proxy / browser
-  firefox # avec tes extensions
+  # Proxy
   zap
 
   # Misc
