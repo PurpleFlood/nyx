@@ -16,19 +16,49 @@ let
 
   profileTag = if profile == "full" then "FULL" else "LIGHT";
 
-  # ── RC file: prompt, aliases, utility functions ────────────────────
-  rcFile = pkgs.writeText "nyx-rc" ''
-    # shellcheck disable=all
+  # ── Zsh config: prompt, aliases, utility functions ─────────────────
+  zshrcFile = pkgs.writeText "nyx-zshrc" ''
+    # ── Prompt ───────────────────────────────────────────────────────
     if [[ "''${NYX_VPN:-0}" == "1" ]]; then
       _nyx_tag='[NYX:VPN:${profileTag}]'
     else
       _nyx_tag='[NYX:${profileTag}]'
     fi
-    PS1="\[\e[1;35m\]$_nyx_tag\[\e[0m\] \[\e[1;33m\]\u@\h\[\e[0m\]:\w\$ "
+    PS1="%B%F{magenta}$_nyx_tag%f%b %B%F{yellow}%n@%m%f%b:%~%# "
 
+    # ── Autosuggestions & syntax highlighting ────────────────────────
+    if [[ -f "${pkgs.zsh-autosuggestions}/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
+      source "${pkgs.zsh-autosuggestions}/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+    fi
+    if [[ -f "${pkgs.zsh-syntax-highlighting}/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
+      source "${pkgs.zsh-syntax-highlighting}/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+    fi
+
+    # ── History ──────────────────────────────────────────────────────
+    HISTFILE=~/.zsh_history
+    HISTSIZE=50000
+    SAVEHIST=50000
+    setopt SHARE_HISTORY
+    setopt HIST_IGNORE_DUPS
+    setopt HIST_IGNORE_SPACE
+
+    # ── Completion ───────────────────────────────────────────────────
+    autoload -Uz compinit && compinit
+    zstyle ':completion:*' menu select
+
+    # ── Aliases ──────────────────────────────────────────────────────
     alias ll='ls -la'
     alias la='ls -A'
 
+    # GUI apps: launch silently in background
+    alias firefox='firefox >/dev/null 2>&1 & disown'
+    alias burpsuite='burpsuite >/dev/null 2>&1 & disown'
+    alias caido='caido-desktop >/dev/null 2>&1 & disown'
+    alias wireshark='wireshark >/dev/null 2>&1 & disown'
+    alias ghidra='ghidra >/dev/null 2>&1 & disown'
+    alias zap='zap >/dev/null 2>&1 & disown'
+
+    # ── Functions ────────────────────────────────────────────────────
     serve() {
       local port="''${1:-8000}"
       python3 -m http.server "$port"
@@ -39,12 +69,22 @@ let
         echo "usage: listen <port>" >&2
         return 1
       fi
+      pwncat :$1
+    }
+
+    listen-nc() {
+      if [[ -z "''${1:-}" ]]; then
+        echo "usage: listen-nc <port>" >&2
+        return 1
+      fi
       nc -lvnp "$1"
     }
   '';
 
   # ── Tmux config ────────────────────────────────────────────────────
   tmuxConf = pkgs.writeText "nyx-tmux.conf" ''
+    set -g default-shell ${pkgs.zsh}/bin/zsh
+    set -g default-command "${pkgs.zsh}/bin/zsh -l"
     set -g mouse on
     set -g history-limit 50000
     set -g base-index 1
@@ -94,6 +134,7 @@ pkgs.dockerTools.buildLayeredImage {
   contents = allPackages ++ [
     pkgs.dockerTools.fakeNss # /etc/passwd, /etc/group (root, nobody)
     pkgs.bashInteractive # interactive bash with readline
+    pkgs.zsh             # zsh as default shell
     pkgs.cacert # CA certificates for curl/wget/git
   ];
 
@@ -101,8 +142,16 @@ pkgs.dockerTools.buildLayeredImage {
   extraCommands = ''
     mkdir -p etc tmp workspace root
     chmod 1777 tmp
-    cp ${rcFile} etc/nyx-rc
+    cp ${zshrcFile} etc/nyx-zshrc
     cp ${tmuxConf} etc/nyx-tmux.conf
+
+    # Set zsh as default shell for root in /etc/shells
+    echo "${pkgs.zsh}/bin/zsh" >> etc/shells
+
+    # Root .zshrc: source the nyx config
+    cat > root/.zshrc <<'ZRC'
+    [[ -f /etc/nyx-zshrc ]] && source /etc/nyx-zshrc
+ZRC
   '';
 
   config = {
@@ -111,7 +160,9 @@ pkgs.dockerTools.buildLayeredImage {
     Env = [
       "PATH=${toolsPath}:/usr/bin:/bin"
       "TERM=xterm-256color"
-      "NYX_RC=/etc/nyx-rc"
+      "SHELL=${pkgs.zsh}/bin/zsh"
+      "ZDOTDIR=/root"
+      "NYX_ZSHRC=/etc/nyx-zshrc"
       "NYX_TMUX_CONF=/etc/nyx-tmux.conf"
       "HOME=/root"
       "NYX_PROFILE=${profile}"
