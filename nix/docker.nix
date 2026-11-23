@@ -53,7 +53,7 @@ let
     # GUI apps: launch silently in background
     alias firefox='firefox >/dev/null 2>&1 & disown'
     alias burpsuite='burpsuite >/dev/null 2>&1 & disown'
-    alias caido='caido-desktop >/dev/null 2>&1 & disown'
+    alias caido='caido-desktop --no-sandbox --disable-gpu >/dev/null 2>&1 & disown'
     alias wireshark='wireshark >/dev/null 2>&1 & disown'
     alias ghidra='ghidra >/dev/null 2>&1 & disown'
     alias zap='zap >/dev/null 2>&1 & disown'
@@ -168,6 +168,7 @@ ZRC
       "NYX_PROFILE=${profile}"
       "_JAVA_AWT_WM_NONREPARENTING=1"
       "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+      "FONTCONFIG_FILE=${pkgs.fontconfig.out}/etc/fonts/fonts.conf"
       "PENTEST_WORDLISTS=/workspace/wordlists"
       "PENTEST_WORKSPACE=/workspace"
     ];
