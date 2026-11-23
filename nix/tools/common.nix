@@ -73,6 +73,7 @@ with pkgs;
   fd
   git
   (import ../arsenal.nix { inherit pkgs; })
+  cherrytree
 
   # ── Browser ────────────────────────────────────────────────────────
   firefoxCustom
