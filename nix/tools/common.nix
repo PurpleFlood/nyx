@@ -56,5 +56,5 @@ with pkgs;
 
   # Wordlists
   seclists
-  rockyou # ou ton script fetch-wordlists
+  rockyou # or fetch-wordlists script
 ]
