@@ -32,10 +32,15 @@ with pkgs;
   gnused
   gawk
   findutils
-  ncurses          # clear, tput
+  ncurses # clear, tput
   util-linux
   binutils
   xxd
+
+  # Electron
+  fontconfig
+  freetype
+  dbus
 
   # ── Shell ──────────────────────────────────────────────────────────
   zsh
@@ -45,7 +50,7 @@ with pkgs;
   # ── Network ────────────────────────────────────────────────────────
   nmap
   netcat-gnu
-  pwncat           # enhanced netcat (listener)
+  pwncat # enhanced netcat (listener)
   iputils
   dnsutils
   whois

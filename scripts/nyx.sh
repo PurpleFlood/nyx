@@ -518,7 +518,7 @@ cmd_start() {
   # Container already running → attach
   if container_running "$container"; then
     info "connecting to workspace '$name'..."
-    exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
+    exec "$CTR" exec -it "$container" zsh
   fi
 
   # Container exists but stopped → check for update and restart
@@ -541,14 +541,14 @@ cmd_start() {
         "$CTR" rm "$container" >/dev/null
         create_container "$name" "${current_profile:-$profile}" "$vpn_path"
         sleep 2
-        exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
+        exec "$CTR" exec -it "$container" zsh
       fi
     fi
 
     info "restarting workspace '$name'..."
     "$CTR" start "$container" >/dev/null
     sleep 2
-    exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
+    exec "$CTR" exec -it "$container" zsh
   fi
 
   # Check image exists, offer install if missing
@@ -575,7 +575,7 @@ cmd_start() {
   sleep 2
 
   # Enter the container
-  exec "$CTR" exec -it "$container" bash --rcfile /etc/nyx-rc -i
+  exec "$CTR" exec -it "$container" zsh
 }
 
 cmd_stop() {
