@@ -72,6 +72,8 @@ with pkgs;
   ripgrep
   fd
   git
+  netexec
+  freerdp
   (import ../arsenal.nix { inherit pkgs; })
   cherrytree
 
