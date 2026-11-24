@@ -33,7 +33,7 @@ fi
 # ── VPN ──────────────────────────────────────────────────────────────────
 if [[ "${STYX_VPN:-0}" == "1" ]] && [[ -f "/vpn/config.ovpn" ]]; then
   printf '[styx] connecting VPN...\n'
-  openvpn --config /vpn/config.ovpn --daemon nyx-vpn \
+  openvpn --config /vpn/config.ovpn --daemon styx-vpn \
     --writepid /tmp/openvpn.pid --log /tmp/openvpn.log --verb 3
 
   connected=0

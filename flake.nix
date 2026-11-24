@@ -2,17 +2,17 @@
   # Isolated pentest/CTF environment via Docker/Podman containers.
   #
   # Main usage (containerised):
-  #   nix develop          → minimal shell with only the nyx command
-  #   nyx install           → build and load the light image
-  #   nyx start <name>      → start a containerised workspace
+  #   nix develop          → minimal shell with only the styx command
+  #   styx install           → build and load the light image
+  #   styx start <name>      → start a containerised workspace
   #
   # Alternative usage (no container):
   #   nix develop .#light  → full devShell, light profile (~7 GiB)
   #   nix develop .#full   → full devShell, full profile  (~20-30 GiB)
   #
   # Direct image builds:
-  #   nix build .#docker-light  → Docker image "nyx:light"
-  #   nix build .#docker-full   → Docker image "nyx:full"
+  #   nix build .#docker-light  → Docker image "styx:light"
+  #   nix build .#docker-full   → Docker image "styx:full"
   description = "Isolated pentest/CTF environment";
 
   inputs = {
@@ -50,15 +50,15 @@
         system:
         let
           pkgs = pkgsFor system;
-          nyx = import ./nix/nyx.nix { inherit pkgs; };
+          styx = import ./nix/styx.nix { inherit pkgs; };
 
-          # Minimal shell: only the nyx command (fast to build)
+          # Minimal shell: only the styx command (fast to build)
           minimalShell = pkgs.mkShell {
-            packages = [ nyx ];
+            packages = [ styx ];
             shellHook = ''
               echo ""
-              echo "  ☽ nyx — pentest workspace manager"
-              echo "  Run 'nyx install' to build an image, then 'nyx start <name>' to begin."
+              echo "  ☽ styx — pentest workspace manager"
+              echo "  Run 'styx install' to build an image, then 'styx start <name>' to begin."
               echo ""
             '';
           };
@@ -74,12 +74,12 @@
               };
             in
             pkgs.mkShell {
-              packages = tools.packages ++ hook.packages ++ [ nyx ];
+              packages = tools.packages ++ hook.packages ++ [ styx ];
               shellHook = hook.shellHook;
             };
         in
         {
-          # nix develop         → minimal shell with nyx only
+          # nix develop         → minimal shell with styx only
           # nix develop .#light → full devShell, light profile (no container)
           # nix develop .#full  → full devShell, full profile (no container)
           default = minimalShell;
@@ -99,8 +99,8 @@
           pkgs = pkgsFor system;
         in
         {
-          # nyx CLI: containerised workspace manager
-          nyx = import ./nix/nyx.nix { inherit pkgs; };
+          # styx CLI: containerised workspace manager
+          styx = import ./nix/styx.nix { inherit pkgs; };
 
           # Deterministic Docker images built with Nix
           # Usage: nix build .#docker-light && docker load < result

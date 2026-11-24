@@ -4,7 +4,7 @@
 #
 # Build: nix build .#docker-light  or  nix build .#docker-full
 # Load:  docker load < result
-# Result: image "nyx:light" or "nyx:full"
+# Result: image "styx:light" or "styx:full"
 {
   pkgs,
   pwndbg,
@@ -17,14 +17,14 @@ let
   profileTag = if profile == "full" then "FULL" else "LIGHT";
 
   # ── Zsh config: prompt, aliases, utility functions ─────────────────
-  zshrcFile = pkgs.writeText "nyx-zshrc" ''
+  zshrcFile = pkgs.writeText "styx-zshrc" ''
     # ── Prompt ───────────────────────────────────────────────────────
-    if [[ "''${NYX_VPN:-0}" == "1" ]]; then
-      _nyx_tag='[NYX:VPN:${profileTag}]'
+    if [[ "''${STYX_VPN:-0}" == "1" ]]; then
+      _styx_tag='[STYX:VPN:${profileTag}]'
     else
-      _nyx_tag='[NYX:${profileTag}]'
+      _styx_tag='[STYX:${profileTag}]'
     fi
-    PS1="%B%F{magenta}$_nyx_tag%f%b %B%F{yellow}%n@%m%f%b:%~%# "
+    PS1="%B%F{magenta}$_styx_tag%f%b %B%F{yellow}%n@%m%f%b:%~%# "
 
     # ── Autosuggestions & syntax highlighting ────────────────────────
     if [[ -f "${pkgs.zsh-autosuggestions}/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
@@ -82,7 +82,7 @@ let
   '';
 
   # ── Tmux config ────────────────────────────────────────────────────
-  tmuxConf = pkgs.writeText "nyx-tmux.conf" ''
+  tmuxConf = pkgs.writeText "styx-tmux.conf" ''
     set -g default-shell ${pkgs.zsh}/bin/zsh
     set -g default-command "${pkgs.zsh}/bin/zsh -l"
     set -g mouse on
@@ -95,14 +95,14 @@ let
 
   # ── Entrypoint: prepare workspace, start VPN, stay alive ───────────
   entrypoint = pkgs.writeShellApplication {
-    name = "nyx-entrypoint";
+    name = "styx-entrypoint";
     runtimeInputs = with pkgs; [
       coreutils
       openvpn
       gnugrep
       bashInteractive
     ];
-    text = builtins.readFile ../scripts/nyx-entrypoint.sh;
+    text = builtins.readFile ../scripts/styx-entrypoint.sh;
   };
 
   # ── fetch-wordlists: download rockyou, SecLists, linpeas ───────────
@@ -127,7 +127,7 @@ let
 
 in
 pkgs.dockerTools.buildLayeredImage {
-  name = "nyx";
+  name = "styx";
   tag = profile;
   maxLayers = 120;
 
@@ -142,30 +142,30 @@ pkgs.dockerTools.buildLayeredImage {
   extraCommands = ''
     mkdir -p etc tmp workspace root
     chmod 1777 tmp
-    cp ${zshrcFile} etc/nyx-zshrc
-    cp ${tmuxConf} etc/nyx-tmux.conf
+    cp ${zshrcFile} etc/styx-zshrc
+    cp ${tmuxConf} etc/styx-tmux.conf
 
     # Set zsh as default shell for root in /etc/shells
     echo "${pkgs.zsh}/bin/zsh" >> etc/shells
 
-    # Root .zshrc: source the nyx config
+    # Root .zshrc: source the styx config
     cat > root/.zshrc <<'ZRC'
-    [[ -f /etc/nyx-zshrc ]] && source /etc/nyx-zshrc
+    [[ -f /etc/styx-zshrc ]] && source /etc/styx-zshrc
 ZRC
   '';
 
   config = {
-    Cmd = [ "${entrypoint}/bin/nyx-entrypoint" ];
+    Cmd = [ "${entrypoint}/bin/styx-entrypoint" ];
     WorkingDir = "/workspace";
     Env = [
       "PATH=${toolsPath}:/usr/bin:/bin"
       "TERM=xterm-256color"
       "SHELL=${pkgs.zsh}/bin/zsh"
       "ZDOTDIR=/root"
-      "NYX_ZSHRC=/etc/nyx-zshrc"
-      "NYX_TMUX_CONF=/etc/nyx-tmux.conf"
+      "STYX_ZSHRC=/etc/styx-zshrc"
+      "STYX_TMUX_CONF=/etc/styx-tmux.conf"
       "HOME=/root"
-      "NYX_PROFILE=${profile}"
+      "STYX_PROFILE=${profile}"
       "_JAVA_AWT_WM_NONREPARENTING=1"
       "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       "FONTCONFIG_FILE=${pkgs.fontconfig.out}/etc/fonts/fonts.conf"

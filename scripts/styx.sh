@@ -9,7 +9,7 @@ readonly STYX_WORKSPACE="${STYX_WORKSPACE:-$HOME/styx-workspace}"
 readonly STYX_IMAGE_PREFIX="styx"
 readonly STYX_DEFAULT_PROFILE="light"
 readonly STYX_VALID_PROFILES="light web hardware wireless dev full"
-readonly STYX_FLAKE="${STYX_FLAKE:-github:PurpleFlood/styx/nix-container}"
+readonly STYX_FLAKE="${STYX_FLAKE:-github:PurpleFlood/pentest-env/nix-container}"
 readonly STYX_BUILD_DIR="${STYX_BUILD_DIR:-$HOME/.styx/build}"
 
 # Auto-detect container runtime: podman preferred, fallback to docker.
@@ -318,7 +318,7 @@ cmd_uninstall() {
   if [[ -n "$containers" ]]; then
     info "removing containers linked to this image:"
     echo "$containers" | while read -r c; do
-      info "  - ${c#nyx-}"
+      info "  - ${c#styx-}"
       "$CTR" stop "$c" &>/dev/null || true
       "$CTR" rm "$c" &>/dev/null || true
     done
